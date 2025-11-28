@@ -18,6 +18,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import SupervisedUserCircleIcon from "@mui/icons-material/SupervisedUserCircle";
 import PeopleIcon from "@mui/icons-material/People";
+import PersonAddIcon from "@mui/icons-material/PersonAdd";
 import PaymentIcon from "@mui/icons-material/Payment";
 import EventIcon from "@mui/icons-material/Event";
 import GroupsIcon from "@mui/icons-material/Groups";
@@ -159,6 +160,7 @@ const SidebarContent = ({
       roles: ["admin"],
     },
     { text: "Users", icon: <PeopleIcon />, link: "/user", roles: ["admin"] },
+    { text: "Add User", icon: <PersonAddIcon />, link: "/add-user", roles: ["admin"] },
     {
       text: "Payments",
       icon: <PaymentIcon />,

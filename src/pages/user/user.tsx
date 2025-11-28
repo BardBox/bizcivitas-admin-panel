@@ -6,7 +6,8 @@ import { useVisibility } from "../../context/VisibilityContext";
 import { CSVLink } from "react-csv";
 
 // Define roles and membership types
-const roles = ["user", "core-member", "Digital Member"];
+// ✅ Updated to match backend constants (user, core-member, admin)
+const roles = ["user", "core-member", "admin"];
 const membershipTypes = [
   "Core Membership",
   "Flagship Membership",

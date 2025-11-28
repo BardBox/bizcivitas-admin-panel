@@ -16,6 +16,7 @@ import SignIn from "./pages/Auth/SignIn";
 import SignUp from "./pages/Auth/SignUp";
 import GuestList from "./pages/GuestList/guest";
 import CustomersPage from "./pages/user/user";
+import AddUserPage from "./pages/user/AddUser";
 // import EventCreation from "./pages/EventCreation/eventCreation";
 import CommunityMemberList from "./pages/core";
 import CommunityPage from "./pages/community";
@@ -83,6 +84,7 @@ function App() {
 
           <Route path="/GuestList" element={<GuestList />} />
           <Route path="/user" element={<CustomersPage />} />
+          <Route path="/add-user" element={<AddUserPage />} />
              <Route path="/Inquiry" element={<Inquiry/>} />
           <Route path="/core" element={<CommunityMemberList />} />
           {/* <Route path="/EventCreation" element={<EventCreation />} /> */}
