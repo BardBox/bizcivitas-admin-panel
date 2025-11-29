@@ -6,8 +6,19 @@ import { useVisibility } from "../../context/VisibilityContext";
 import { CSVLink } from "react-csv";
 
 // Define roles and membership types
-// ✅ Updated to match backend constants (user, core-member, admin)
-const roles = ["user", "core-member", "admin"];
+// ✅ UPDATED RBAC ROLES - Matches backend constants
+const roles = [
+  "user",                    // Default role for all registered users
+  "digital-member",          // Digital-only participants
+  "core-member",             // Non-leader group members
+  "pioneer",                 // Special recognition role (optional)
+  "dcp",                     // Digital Channel Partner (manages digital members)
+  "cgc",                     // Core Group Council (group leaders, can create groups)
+  "area-franchise",          // Area Partner (manages areas)
+  "master-franchise",        // City-level franchise (manages city)
+  "admin"              // Full system access
+];
+
 const membershipTypes = [
   "Core Membership",
   "Flagship Membership",

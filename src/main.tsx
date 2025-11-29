@@ -56,7 +56,7 @@ const Layout: React.FC = () => {
     "/memberships": "Membership Manage",
     "/meetings/:id": "Meeting Detail Page",
     "/upload": "Knowledge Hub",
-    "/Wallfeed":"Biz Pulse"
+    "/Wallfeed": "Biz Pulse"
   };
 
   let currentTitle = pageTitles[location.pathname] || "Dashboard";
@@ -88,27 +88,33 @@ const Layout: React.FC = () => {
   );
 };
 
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+const queryClient = new QueryClient();
+
 const Root: React.FC = () => {
   return (
-    <ThemeProvider theme={theme}>
-      <BrowserRouter>
-        <ToastContainer
-          limit={3}
-          position="top-right"
-          autoClose={2000}
-          pauseOnFocusLoss={false}
-          hideProgressBar={false}
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          theme="light"
-          icon={false}
-        />
-        <VisibilityProvider>
-          <Layout />
-        </VisibilityProvider>
-      </BrowserRouter>
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider theme={theme}>
+        <BrowserRouter>
+          <ToastContainer
+            limit={3}
+            position="top-right"
+            autoClose={2000}
+            pauseOnFocusLoss={false}
+            hideProgressBar={false}
+            newestOnTop={false}
+            closeOnClick
+            rtl={false}
+            theme="light"
+            icon={false}
+          />
+          <VisibilityProvider>
+            <Layout />
+          </VisibilityProvider>
+        </BrowserRouter>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 };
 

@@ -17,6 +17,7 @@ import SignUp from "./pages/Auth/SignUp";
 import GuestList from "./pages/GuestList/guest";
 import CustomersPage from "./pages/user/user";
 import AddUserPage from "./pages/user/AddUser";
+import CreateFranchise from "./pages/user/CreateFranchise";
 // import EventCreation from "./pages/EventCreation/eventCreation";
 import CommunityMemberList from "./pages/core";
 import CommunityPage from "./pages/community";
@@ -45,6 +46,13 @@ import Upload from "./pages/upload/upload";
 import ManualPaymentForm from "./pages/Mannual-payment/Mannual-payment";
 import JoinRequests from "./pages/EventRequest";
 import DailyFeed from "./pages/Dailyfeed"
+import ZoneList from "./pages/Hierarchy/ZoneList";
+import AreaList from "./pages/Hierarchy/AreaList";
+import ZoneDetails from "./pages/Hierarchy/ZoneDetails";
+import FranchiseManagement from "./pages/Hierarchy/FranchiseManagement";
+import CommissionDashboard from "./pages/Finance/CommissionDashboard";
+import CommissionSettings from "./pages/Finance/CommissionSettings";
+import RoleManagement from "./pages/RBAC/RoleManagement";
 
 function App() {
   const { isLoading } = useLoadingContext();
@@ -62,7 +70,7 @@ function App() {
         {/* Private Routes (Only Logged-In Users) */}
         <Route element={<PrivateRoute />}>
           <Route path="/dashboard" element={<Dashboard />} />
-        
+
           <Route path="/AllEvents" element={<AllEventsLayout />}>
             <Route index element={<Navigate to="one-day" />} />
             <Route path="one-day" element={<OneDayEvent />} />
@@ -85,12 +93,13 @@ function App() {
           <Route path="/GuestList" element={<GuestList />} />
           <Route path="/user" element={<CustomersPage />} />
           <Route path="/add-user" element={<AddUserPage />} />
-             <Route path="/Inquiry" element={<Inquiry/>} />
+          <Route path="/create-franchise" element={<CreateFranchise />} />
+          <Route path="/Inquiry" element={<Inquiry />} />
           <Route path="/core" element={<CommunityMemberList />} />
           {/* <Route path="/EventCreation" element={<EventCreation />} /> */}
           <Route path="/region" element={<RegionManagement />} />
           <Route path="/Meetingpage" element={<MeetingPage />} />
-                    <Route path="/meetings/:id" element={<MeetingDetailsPage />} />
+          <Route path="/meetings/:id" element={<MeetingDetailsPage />} />
 
           <Route path="/create-blog" element={<CreateBlog />} />
           <Route path="/view-blog/:id" element={<ViewBlog />} />
@@ -102,9 +111,18 @@ function App() {
           <Route path="/user-payment" element={<UserPayment />} />
           <Route path="/memberships" element={<MembershipType />} />
           <Route path="/Mannual-payment" element={<ManualPaymentForm />} />
-                    <Route path="/join-request/:eventId" element={<JoinRequests />} />
-  <Route path="/dailyfeed" element={<DailyFeed />} />
- </Route>
+          <Route path="/join-request/:eventId" element={<JoinRequests />} />
+          <Route path="/dailyfeed" element={<DailyFeed />} />
+
+          {/* New Hierarchy & Finance Routes */}
+          <Route path="/hierarchy/zones" element={<ZoneList />} />
+          <Route path="/hierarchy/areas" element={<AreaList />} />
+          <Route path="/hierarchy/zones/:id" element={<ZoneDetails />} />
+          <Route path="/hierarchy/franchise-partners" element={<FranchiseManagement />} />
+          <Route path="/finance/commissions" element={<CommissionDashboard />} />
+          <Route path="/finance/commission-settings" element={<CommissionSettings />} />
+          <Route path="/rbac/roles" element={<RoleManagement />} />
+        </Route>
 
         {/* Core-Member and Admin Routes */}
         <Route element={<RoleBasedRoute allowedRoles={["admin", "core-member"]} />}>

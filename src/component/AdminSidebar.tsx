@@ -30,6 +30,9 @@ import QuestionAnswerIcon from "@mui/icons-material/QuestionAnswer";
 import CardMembershipIcon from "@mui/icons-material/CardMembership";
 import CampaignIcon from "@mui/icons-material/Campaign";
 import BarChartIcon from "@mui/icons-material/BarChart";
+import AccountTreeIcon from "@mui/icons-material/AccountTree";
+import MonetizationOnIcon from "@mui/icons-material/MonetizationOn";
+import SecurityIcon from "@mui/icons-material/Security";
 // import HandshakeIcon from "@mui/icons-material/Handshake"; // Hidden until backend ready
 // Function to get user role from localStorage
 const getUserRole = (): string | null => {
@@ -161,6 +164,7 @@ const SidebarContent = ({
     },
     { text: "Users", icon: <PeopleIcon />, link: "/user", roles: ["admin"] },
     { text: "Add User", icon: <PersonAddIcon />, link: "/add-user", roles: ["admin"] },
+    { text: "Create Franchise", icon: <PersonAddIcon />, link: "/hierarchy/franchise-partners", roles: ["admin"] },
     {
       text: "Payments",
       icon: <PaymentIcon />,
@@ -227,6 +231,30 @@ const SidebarContent = ({
       text: "Membership manage",
       icon: <CardMembershipIcon />,
       link: "/memberships",
+      roles: ["admin"],
+    },
+    {
+      text: "Zone Hierarchy",
+      icon: <AccountTreeIcon />,
+      link: "/hierarchy/zones",
+      roles: ["admin"],
+    },
+    {
+      text: "Area Management",
+      icon: <MapIcon />,
+      link: "/hierarchy/areas",
+      roles: ["admin"],
+    },
+    {
+      text: "Commissions",
+      icon: <MonetizationOnIcon />,
+      link: "/finance/commissions",
+      roles: ["admin"],
+    },
+    {
+      text: "Roles & Permissions",
+      icon: <SecurityIcon />,
+      link: "/rbac/roles",
       roles: ["admin"],
     },
     {
