@@ -2,6 +2,10 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import "./App.css";
 import Dashboard from "./pages/Dashboard";
 import DashboardCore from "./pages/Dashboard-core";
+import DashboardFranchise from "./pages/Dashboard-franchise";
+import DashboardArea from "./pages/Dashboard-area";
+import DashboardCGC from "./pages/Dashboard-cgc";
+import DashboardDCP from "./pages/Dashboard-dcp";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import BizWinAnalytics from "./pages/BizWinAnalytics";
 import BizConnectAnalytics from "./pages/BizConnectAnalytics";
@@ -13,6 +17,7 @@ import PublicRoute from "./component/PublicRoute";
 import PrivateRoute from "./component/PrivateRoute";
 import RoleBasedRoute from "./component/RoleBasedRoute";
 import SignIn from "./pages/Auth/SignIn";
+import FranchiseSignIn from "./pages/Auth/FranchiseSignIn";
 import SignUp from "./pages/Auth/SignUp";
 import GuestList from "./pages/GuestList/guest";
 import CustomersPage from "./pages/user/user";
@@ -64,6 +69,7 @@ function App() {
         {/* Public Routes */}
         <Route element={<PublicRoute />}>
           <Route path="/login" element={<SignIn />} />
+          <Route path="/franchise-login" element={<FranchiseSignIn />} />
           <Route path="/signup" element={<SignUp />} />
         </Route>
 
@@ -133,6 +139,26 @@ function App() {
 
           <Route path="/user/:userId" element={<UserDetailsPage />} /> {/* ✅ Add this */}
 
+        </Route>
+
+        {/* Master Franchise Routes */}
+        <Route element={<RoleBasedRoute allowedRoles={["master-franchise"]} />}>
+          <Route path="/dashboard-franchise" element={<DashboardFranchise />} />
+        </Route>
+
+        {/* Area Franchise Routes */}
+        <Route element={<RoleBasedRoute allowedRoles={["area-franchise"]} />}>
+          <Route path="/dashboard-area" element={<DashboardArea />} />
+        </Route>
+
+        {/* CGC Routes */}
+        <Route element={<RoleBasedRoute allowedRoles={["cgc"]} />}>
+          <Route path="/dashboard-cgc" element={<DashboardCGC />} />
+        </Route>
+
+        {/* DCP Routes */}
+        <Route element={<RoleBasedRoute allowedRoles={["dcp"]} />}>
+          <Route path="/dashboard-dcp" element={<DashboardDCP />} />
         </Route>
 
         {/* Redirect Root URL to Dashboard */}

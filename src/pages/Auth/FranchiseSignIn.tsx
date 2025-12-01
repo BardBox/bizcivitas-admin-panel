@@ -29,7 +29,7 @@ const schema = yup.object().shape({
   password: yup.string().min(8, "Password must be at least 8 characters long").required("Password is required"),
 });
 
-export default function SignIn() {
+export default function FranchiseSignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const { setSidebarAndHeaderVisibility } = useVisibility();
   const { setIsLoading } = useLoadingContext();
@@ -64,23 +64,28 @@ export default function SignIn() {
 
       setIsLoading(false);
       setLoading(false);
-      toast.success("Login successful!");
+      toast.success("Franchise Partner Login successful!");
 
       setTimeout(() => {
         const userRole = localStorage.getItem("role");
+        console.log("Redirecting franchise partner with role:", userRole);
 
-        if (userRole === "admin") {
-          navigate("/dashboard");
-        } else if (userRole === "core-member") {
-          navigate("/dashboard-core");
+        if (userRole === "master-franchise") {
+          navigate("/dashboard-franchise");
+        } else if (userRole === "area-franchise") {
+          navigate("/dashboard-area");
+        } else if (userRole === "cgc") {
+          navigate("/dashboard-cgc");
+        } else if (userRole === "dcp") {
+          navigate("/dashboard-dcp");
         } else {
-          toast.error("Please use the Franchise Partner login page");
-          navigate("/franchise-login");
+          toast.error("Invalid franchise partner role");
+          navigate("/login");
         }
       }, 500);
 
     } catch (error: any) {
-      console.error("Login error:", error);
+      console.error("Franchise login error:", error);
       setIsLoading(false);
       setLoading(false);
       toast.error(`${error.response?.data?.message || "Login failed!"}`);
@@ -108,7 +113,10 @@ export default function SignIn() {
             }}
           />
           <Typography component="h1" variant="h5">
-            Admin / Core Member Login
+            Franchise Partner Login
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, textAlign: "center" }}>
+            Login as Master Franchise, Area Franchise, CGC, or DCP
           </Typography>
           <Box component="form" noValidate onSubmit={handleSubmit(onSubmit)} sx={{ mt: 3 }}>
             <Grid container spacing={2}>
@@ -166,12 +174,12 @@ export default function SignIn() {
               sx={{ mt: 3, mb: 2 }}
               disabled={loading}
             >
-              {loading ? <CircularProgress size={24} sx={{ color: "white" }} /> : "Sign In"}
+              {loading ? <CircularProgress size={24} sx={{ color: "white" }} /> : "Sign In as Franchise Partner"}
             </Button>
             <Box sx={{ textAlign: "center", mt: 2 }}>
-              <Link to="/franchise-login" style={{ textDecoration: "none" }}>
+              <Link to="/login" style={{ textDecoration: "none" }}>
                 <Typography variant="body2" color="primary" sx={{ cursor: "pointer" }}>
-                  Login as Franchise Partner instead →
+                  Login as Admin / Core Member instead
                 </Typography>
               </Link>
             </Box>

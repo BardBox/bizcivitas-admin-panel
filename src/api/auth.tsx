@@ -7,7 +7,7 @@ interface User {
   lname?: string;
   email: string;
   avatar?: string;
-  role: "admin" | "core-member";  // ✅ Role-based access
+  role: "admin" | "core-member" | "master-franchise" | "area-franchise" | "cgc" | "dcp";  // ✅ Role-based access including franchise partners
   isEmailVerified: boolean;
   membershipStatus: boolean;
   mobile: number;
@@ -109,4 +109,28 @@ export const isAdmin = (): boolean => {
 export const isCoreMember = (): boolean => {
   const user = getUserFromLocalStorage();
   return user?.role === "core-member";
+};
+
+// ✅ Function to check if user is a Master Franchise Partner
+export const isMasterFranchise = (): boolean => {
+  const user = getUserFromLocalStorage();
+  return user?.role === "master-franchise";
+};
+
+// ✅ Function to check if user is an Area Franchise Partner
+export const isAreaFranchise = (): boolean => {
+  const user = getUserFromLocalStorage();
+  return user?.role === "area-franchise";
+};
+
+// ✅ Function to check if user is a CGC
+export const isCGC = (): boolean => {
+  const user = getUserFromLocalStorage();
+  return user?.role === "cgc";
+};
+
+// ✅ Function to check if user is a DCP
+export const isDCP = (): boolean => {
+  const user = getUserFromLocalStorage();
+  return user?.role === "dcp";
 };
