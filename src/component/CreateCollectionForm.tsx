@@ -97,12 +97,17 @@ const CreateCollectionForm: React.FC<CreateCollectionFormProps> = ({
       toast.error('Author is required for this collection type', { position: 'top-center' });
       return;
     }
+    if (!collectionForm.thumbnail) {
+      toast.error('Thumbnail is required. Please upload a thumbnail for the collection.', { position: 'top-center' });
+      return;
+    }
 
     const formData = new FormData();
     formData.append('title', collectionForm.title);
     formData.append('description', collectionForm.description || 'No description provided.');
     formData.append('type', collectionForm.type);
     if (collectionForm.type === 'expert') formData.append('expertType', collectionForm.expertType);
+    // Thumbnail is now required, so it will always be present after validation
     if (collectionForm.thumbnail) formData.append('thumbnail', collectionForm.thumbnail);
     collectionForm.submittedBy.forEach(userId => formData.append('submittedBy[]', userId));
     formData.append('author', collectionForm.author || '');
@@ -270,8 +275,14 @@ const CreateCollectionForm: React.FC<CreateCollectionFormProps> = ({
 
         {/* Thumbnail */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Thumbnail (Optional)</label>
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 sm:p-6 text-center hover:border-blue-400 transition-colors">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Thumbnail * <span className="text-red-500">(Required)</span>
+          </label>
+          <div className={`border-2 border-dashed rounded-lg p-4 sm:p-6 text-center transition-colors ${
+            collectionForm.thumbnail 
+              ? 'border-green-300 bg-green-50 hover:border-green-400' 
+              : 'border-red-300 bg-red-50 hover:border-red-400'
+          }`}>
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
@@ -283,14 +294,21 @@ const CreateCollectionForm: React.FC<CreateCollectionFormProps> = ({
               id="collection-thumbnail-upload"
               ref={collectionThumbnailRef}
               disabled={loading}
+              required
             />
             <label htmlFor="collection-thumbnail-upload" className={`cursor-pointer ${loading ? 'pointer-events-none opacity-50' : ''}`}>
               <div className="space-y-2">
                 <div className="text-gray-400">
                   <Upload className="w-8 h-8 mx-auto" />
                 </div>
-                <div className="text-sm text-gray-600">
-                  {collectionForm.thumbnail ? collectionForm.thumbnail.name : 'Click to select thumbnail'}
+                <div className={`text-sm font-medium ${
+                  collectionForm.thumbnail 
+                    ? 'text-green-700' 
+                    : 'text-red-600'
+                }`}>
+                  {collectionForm.thumbnail 
+                    ? `✓ ${collectionForm.thumbnail.name}` 
+                    : '⚠ Click to select thumbnail (Required)'}
                 </div>
               </div>
             </label>
@@ -318,9 +336,9 @@ const CreateCollectionForm: React.FC<CreateCollectionFormProps> = ({
           </button>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !collectionForm.thumbnail}
             className={`w-full py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-              loading ? 'bg-blue-400 text-white cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white'
+              loading || !collectionForm.thumbnail ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white'
             }`}
           >
             {loading ? (

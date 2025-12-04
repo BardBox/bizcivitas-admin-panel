@@ -256,9 +256,15 @@ const getLocationPlaceholders = (countries: string[]) => {
           country: selectedCountry.label,
         }));
         if (stateOptions.length > 0) {
+          // Add "All" option at the beginning
+          const allOption: Option = {
+            value: `__ALL__${selectedCountry.value}`,
+            label: "All States",
+            country: selectedCountry.label,
+          };
           allStates.push({
             label: selectedCountry.label,
-            options: stateOptions,
+            options: [allOption, ...stateOptions],
           });
         }
       });
@@ -284,9 +290,16 @@ const getLocationPlaceholders = (countries: string[]) => {
             country: selectedState.country,
           }));
           if (cityOptions.length > 0) {
+            // Add "All" option at the beginning
+            const allOption: Option = {
+              value: `__ALL__${selectedState.value}__${country.value}`,
+              label: "All Cities",
+              state: selectedState.label,
+              country: selectedState.country,
+            };
             allCities.push({
               label: `${selectedState.label}, ${selectedState.country}`,
-              options: cityOptions,
+              options: [allOption, ...cityOptions],
             });
           }
         }
@@ -978,58 +991,136 @@ const getLocationPlaceholders = (countries: string[]) => {
 
   // Handle state selection change
   const handleStateChange = (selectedOptions: MultiValue<Option>) => {
-    setFormData((prev) => ({
-      ...prev,
-      state: selectedOptions || [],
-      city: [],
-      targetId: [],
-      targetType: "",
-    }));
-    setEntities([]);
+    if (!selectedOptions || selectedOptions.length === 0) {
+      setFormData((prev) => ({
+        ...prev,
+        state: [],
+        city: [],
+        targetId: [],
+        targetType: "",
+      }));
+      setEntities([]);
+      return;
+    }
 
-    // Fetch entities when states are selected (even without cities)
-    if (
-      selectedOptions &&
-      selectedOptions.length > 0 &&
-      formData.country.length > 0
-    ) {
-      // For the API, we'll use the first selected country and state
-      const firstCountry = formData.country[0];
-      const firstState = selectedOptions[0];
-      fetchEntities({
-        country: firstCountry.value,
-        state: firstState.value,
-        // Don't pass city so we get all entities for the state
+    // Check if "All" option is selected
+    const allOptions = selectedOptions.filter((opt) => opt.value.startsWith("__ALL__"));
+    
+    if (allOptions.length > 0) {
+      // If "All" is selected, replace it with all available states
+      const allStates: Option[] = [];
+      stateOptions.forEach((group) => {
+        // Filter out the "All" option itself
+        const regularStates = group.options.filter((opt) => !opt.value.startsWith("__ALL__"));
+        allStates.push(...regularStates);
       });
+      
+      setFormData((prev) => ({
+        ...prev,
+        state: allStates,
+        city: [],
+        targetId: [],
+        targetType: "",
+      }));
+      setEntities([]);
+
+      // Fetch entities for all states
+      if (formData.country.length > 0) {
+        const firstCountry = formData.country[0];
+        // Fetch entities without state filter to get all entities for the country
+        fetchEntities({
+          country: firstCountry.value,
+        });
+      }
+    } else {
+      // Normal selection - no "All" option
+      setFormData((prev) => ({
+        ...prev,
+        state: selectedOptions,
+        city: [],
+        targetId: [],
+        targetType: "",
+      }));
+      setEntities([]);
+
+      // Fetch entities when states are selected (even without cities)
+      if (formData.country.length > 0) {
+        const firstCountry = formData.country[0];
+        const firstState = selectedOptions[0];
+        fetchEntities({
+          country: firstCountry.value,
+          state: firstState.value,
+          // Don't pass city so we get all entities for the state
+        });
+      }
     }
   };
 
   // Handle city selection change
   const handleCityChange = (selectedOptions: MultiValue<Option>) => {
-    setFormData((prev) => ({
-      ...prev,
-      city: selectedOptions || [],
-      targetId: [],
-      targetType: "",
-    }));
-    setEntities([]);
+    if (!selectedOptions || selectedOptions.length === 0) {
+      setFormData((prev) => ({
+        ...prev,
+        city: [],
+        targetId: [],
+        targetType: "",
+      }));
+      setEntities([]);
+      return;
+    }
 
-    // Fetch entities when cities are selected
-    if (
-      selectedOptions &&
-      selectedOptions.length > 0 &&
-      formData.country.length > 0 &&
-      formData.state.length > 0
-    ) {
-      // Pass all selected cities to fetch entities for each one
-      const firstCountry = formData.country[0];
-      const firstState = formData.state[0];
-      const selectedCities = selectedOptions.map((city) => city.value);
-      fetchEntities({
-        country: firstCountry.value,
-        state: firstState.value,
-        city: selectedCities, // Pass array of cities
+    // Check if "All" option is selected
+    const allOptions = selectedOptions.filter((opt) => opt.value.startsWith("__ALL__"));
+    
+    if (allOptions.length > 0) {
+      // If "All" is selected, replace it with all available cities
+      const allCities: Option[] = [];
+      cityOptions.forEach((group) => {
+        // Filter out the "All" option itself
+        const regularCities = group.options.filter((opt) => !opt.value.startsWith("__ALL__"));
+        allCities.push(...regularCities);
       });
+      
+      setFormData((prev) => ({
+        ...prev,
+        city: allCities,
+        targetId: [],
+        targetType: "",
+      }));
+      setEntities([]);
+
+      // Fetch entities for all cities
+      if (formData.country.length > 0 && formData.state.length > 0) {
+        const firstCountry = formData.country[0];
+        const firstState = formData.state[0];
+        const selectedCities = allCities.map((city) => city.value);
+        fetchEntities({
+          country: firstCountry.value,
+          state: firstState.value,
+          city: selectedCities,
+        });
+      }
+    } else {
+      // Normal selection - no "All" option
+      setFormData((prev) => ({
+        ...prev,
+        city: selectedOptions,
+        targetId: [],
+        targetType: "",
+      }));
+      setEntities([]);
+
+      // Fetch entities when cities are selected
+      if (formData.country.length > 0 && formData.state.length > 0) {
+        const firstCountry = formData.country[0];
+        const firstState = formData.state[0];
+        const selectedCities = selectedOptions.map((city) => city.value);
+        fetchEntities({
+          country: firstCountry.value,
+          state: firstState.value,
+          city: selectedCities, // Pass array of cities
+        });
+      }
     }
   };
 
@@ -1072,8 +1163,6 @@ const getLocationPlaceholders = (countries: string[]) => {
 
     // Check required fields individually
     if (!formData.title) validationErrors.push("Meeting title");
-    if (!formData.visitor) validationErrors.push("Visitor details");
-    if (!formData.speaker) validationErrors.push("Speaker name");
     if (!formData.agenda) validationErrors.push("Meeting agenda");
     if (!formData.date) validationErrors.push("Meeting date");
     if (!formData.place) validationErrors.push("Meeting location");
@@ -1156,17 +1245,23 @@ const getLocationPlaceholders = (countries: string[]) => {
       }
 
       if (formData.state.length > 0) {
-        formDataToSend.append(
-          "state",
-          JSON.stringify(formData.state.map((s) => s.value))
-        );
+        // Filter out "__ALL__" options if any remain
+        const validStates = formData.state
+          .filter((s) => !s.value.startsWith("__ALL__"))
+          .map((s) => s.value);
+        if (validStates.length > 0) {
+          formDataToSend.append("state", JSON.stringify(validStates));
+        }
       }
 
       if (formData.city.length > 0) {
-        formDataToSend.append(
-          "city",
-          JSON.stringify(formData.city.map((c) => c.value))
-        );
+        // Filter out "__ALL__" options if any remain
+        const validCities = formData.city
+          .filter((c) => !c.value.startsWith("__ALL__"))
+          .map((c) => c.value);
+        if (validCities.length > 0) {
+          formDataToSend.append("city", JSON.stringify(validCities));
+        }
       }
 
       // Build targets array with correct entity types
@@ -1628,27 +1723,25 @@ const getLocationPlaceholders = (countries: string[]) => {
                 />
               </div>
               <div className="col-span-1 md:col-span-1">
-                <label className="block text-gray-700">Visitor Count *</label>
+                <label className="block text-gray-700">Visitor Count</label>
                 <input
                   type="number"
                   name="visitor"
                   value={formData.visitor}
                   onChange={handleChange}
                   className="w-full border p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  min="1"
+                  min="0"
                 />
               </div>
               <div className="col-span-1 md:col-span-1">
-                <label className="block text-gray-700">Speaker Count *</label>
+                <label className="block text-gray-700">Speaker Count</label>
                 <input
                   type="number"
                   name="speaker"
                   value={formData.speaker}
                   onChange={handleChange}
                   className="w-full border p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                  min="1"
+                  min="0"
                 />
               </div>
               <div className="col-span-1 md:col-span-1">

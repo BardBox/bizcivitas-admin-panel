@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Save, Edit2, Trash2 } from 'lucide-react';
 import CollectionItem from './CollectionItem';
 import collectionApi from '../api/knowldgehub';
@@ -48,7 +48,7 @@ interface CollectionListProps {
   setIsEditCollectionModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
   expandedCollections: string[];
   setExpandedCollections: React.Dispatch<React.SetStateAction<string[]>>;
-  setMediaToDelete: React.Dispatch<React.SetStateAction<Collection | null>>;
+  setMediaToDelete: React.Dispatch<React.SetStateAction<any>>;
   setIsDeleteConfirmOpen: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
@@ -74,11 +74,9 @@ const CollectionList: React.FC<CollectionListProps> = ({
   setIsEditCollectionModalOpen,
   expandedCollections,
   setExpandedCollections,
-  // setMediaToDelete,
-  // setIsDeleteConfirmOpen,
+  setMediaToDelete,
+  setIsDeleteConfirmOpen,
 }) => {
-  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [mediaToDelete, setMediaToDelete] = useState<Collection | null>(null);
 
   const filteredCollections = collections.filter(collection => {
     const matchesSearch =
@@ -115,20 +113,6 @@ const CollectionList: React.FC<CollectionListProps> = ({
     }
   };
 
-  const handleDeleteCollection = async (collectionId: string) => {
-    try {
-      await collectionApi.deleteCollection(collectionId);
-      setCollections(prev => prev.filter(col => col._id !== collectionId));
-      setSavedCollections(prev => prev.filter(col => col._id !== collectionId));
-      toast.success("Collection deleted successfully", { position: "top-center" });
-    } catch (err: any) {
-      console.error("deleteCollection error:", err);
-      toast.error(err.response?.data?.message || "Failed to delete collection", { position: "top-center" });
-    } finally {
-      setIsDeleteConfirmOpen(false);
-      setMediaToDelete(null);
-    }
-  };
 
   const handleEditClick = (collection: Collection) => {
     setEditCollection(collection);
@@ -250,28 +234,6 @@ const CollectionList: React.FC<CollectionListProps> = ({
         </div>
       )}
 
-      {isDeleteConfirmOpen && mediaToDelete && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-          <div className="bg-white p-6 rounded-lg shadow-lg w-96">
-            <h3 className="text-lg font-semibold mb-4">Confirm Delete</h3>
-            <p>Are you sure you want to delete "{mediaToDelete.title}"?</p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setIsDeleteConfirmOpen(false)}
-                className="px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => handleDeleteCollection(mediaToDelete._id)}
-                className="px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

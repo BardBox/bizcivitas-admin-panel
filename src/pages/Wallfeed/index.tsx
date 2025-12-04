@@ -954,6 +954,30 @@ const Wallfeed = () => {
             opacity: 1;
             transform: translate(-50%, -50%) scale(1.1);
           }
+          /* Preserve line breaks in rendered content */
+          .prose p {
+            margin: 0.5rem 0;
+            min-height: 1.2em; /* Ensure empty paragraphs are visible */
+            display: block;
+          }
+          /* Handle empty paragraphs */
+          .prose p:empty {
+            min-height: 1.2em;
+            display: block;
+          }
+          /* Handle paragraphs that only contain zero-width space or whitespace */
+          .prose p:has(> :only-child) {
+            min-height: 1.2em;
+          }
+          /* Ensure paragraphs with zero-width space are visible */
+          .prose p {
+            white-space: pre-wrap; /* Preserve whitespace and line breaks */
+          }
+          .prose br {
+            display: block;
+            margin: 0.5rem 0;
+            line-height: 1.5;
+          }
         `}
       </style>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
