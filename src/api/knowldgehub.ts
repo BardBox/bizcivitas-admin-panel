@@ -5,6 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: import.meta.env.VITE_API_WITH_CREDENTIALS === 'true',
+  timeout: 300000, // 5 minutes default timeout (will be overridden for uploads)
 });
 
 // Interceptors
@@ -74,11 +75,20 @@ const collectionApi = {
       const response = await api.post('/upload-media', formData, {
         ...config,
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 900000, // 15 minutes timeout for large file uploads (increased to handle multiple videos)
       });
       console.log('uploadMedia Response:', response.data);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('uploadMedia Error:', error);
+      // Handle timeout errors specifically
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        throw new Error('Upload timeout: The file is too large or the connection is too slow. Please try uploading a smaller file or check your internet connection.');
+      }
+      // Handle 504 Gateway Timeout
+      if (error.response?.status === 504) {
+        throw new Error('Gateway timeout: The server took too long to process your upload. The file might be too large. Please try a smaller file or contact support.');
+      }
       throw error;
     }
   },
@@ -109,7 +119,6 @@ updateMedia: async (mediaId: string, formData: FormData) => {
     throw error;
   }
 },
-  // Delete collection
 deleteCollection: async (collectionId: string) => {
   try {
     const response = await api.delete(`/collections/${collectionId}`);

@@ -34,12 +34,14 @@ interface Collection {
 
 interface UploadMediaFormProps {
   collections: Collection[];
-  uploadMedia: (formData: FormData) => Promise<void>;
+  uploadMedia: (formData: FormData, onProgress?: (progress: number) => void) => Promise<void>;
+  onUploadComplete?: () => Promise<void>;
 }
 
 const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
   collections,
   uploadMedia,
+  onUploadComplete,
 }) => {
   const [uploadForm, setUploadForm] = useState<UploadForm>({
     collectionId: "",
@@ -56,6 +58,11 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
   const pdfInputRef = useRef<HTMLInputElement>(null);
+
+  // File size limits (in bytes)
+  const MAX_VIDEO_SIZE = 100 * 1024 * 1024; // 100MB
+  const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10MB
+  const MAX_THUMBNAIL_SIZE = 5 * 1024 * 1024; // 5MB
 
   const getAllowedMediaTypes = (type: Collection["type"]) => {
     switch (type) {
@@ -117,29 +124,134 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
       });
       return;
     }
+    // Validate that all thumbnails are actual files (not null)
+    if (
+      uploadForm.videos.length > 0 &&
+      uploadForm.thumbnails.some((thumb) => !thumb || !(thumb instanceof File))
+    ) {
+      toast.error("Please provide a thumbnail for each video. Thumbnails are required.", {
+        position: "top-center",
+      });
+      return;
+    }
 
-    const formData = new FormData();
-    formData.append("parentId", uploadForm.collectionId);
-    formData.append("description", uploadForm.description || "");
-    if (uploadForm.videoTitles.length)
-      formData.append("videoTitles", JSON.stringify(uploadForm.videoTitles));
-    if (uploadForm.pdfTitles.length)
-      formData.append("pdfTitles", JSON.stringify(uploadForm.pdfTitles));
-    if (allowedMedia.allowPDF)
-      formData.append("pdfDownloadable", uploadForm.pdfDownloadable.toString());
-    uploadForm.videos.forEach((file) => formData.append("videos", file));
-    uploadForm.pdfs.forEach((file) => formData.append("pdfs", file));
-    uploadForm.thumbnails.forEach((file) =>
-      formData.append("thumbnails", file)
-    );
+    // Validate file sizes before upload
+    for (const video of uploadForm.videos) {
+      if (video.size > MAX_VIDEO_SIZE) {
+        const sizeMB = (video.size / (1024 * 1024)).toFixed(2);
+        toast.error(`Video "${video.name}" is too large (${sizeMB}MB). Maximum size is 100MB. Please compress or use a smaller file.`, {
+          position: "top-center",
+          autoClose: 7000,
+        });
+        return;
+      }
+    }
+
+    for (const pdf of uploadForm.pdfs) {
+      if (pdf.size > MAX_PDF_SIZE) {
+        const sizeMB = (pdf.size / (1024 * 1024)).toFixed(2);
+        toast.error(`PDF "${pdf.name}" is too large (${sizeMB}MB). Maximum size is 10MB. Please compress or use a smaller file.`, {
+          position: "top-center",
+          autoClose: 7000,
+        });
+        return;
+      }
+    }
+
+    for (const thumbnail of uploadForm.thumbnails) {
+      if (thumbnail && thumbnail.size > MAX_THUMBNAIL_SIZE) {
+        const sizeMB = (thumbnail.size / (1024 * 1024)).toFixed(2);
+        toast.error(`Thumbnail "${thumbnail.name}" is too large (${sizeMB}MB). Maximum size is 5MB. Please use a smaller image.`, {
+          position: "top-center",
+          autoClose: 7000,
+        });
+        return;
+      }
+    }
+
     const userId = localStorage.getItem("userId") || "current-user-id";
-    formData.append("uploadedBy", userId);
-
     setIsUploading(true);
     setUploadProgress(0);
+    setError(null);
 
     try {
-      await uploadMedia(formData);
+      // Upload videos one at a time to prevent gateway timeout
+      if (uploadForm.videos.length > 0) {
+        const totalItems = uploadForm.videos.length + uploadForm.pdfs.length;
+        let completedItems = 0;
+        const failedVideos: string[] = [];
+
+        for (let i = 0; i < uploadForm.videos.length; i++) {
+          try {
+            const videoFormData = new FormData();
+            videoFormData.append("parentId", uploadForm.collectionId);
+            videoFormData.append("description", uploadForm.description || "");
+            videoFormData.append("videoTitles", JSON.stringify([uploadForm.videoTitles[i]]));
+            videoFormData.append("videos", uploadForm.videos[i]);
+            videoFormData.append("thumbnails", uploadForm.thumbnails[i]);
+            videoFormData.append("uploadedBy", userId);
+
+            await uploadMedia(videoFormData, (progress) => {
+              // Calculate overall progress: completed items + current item progress
+              const itemProgress = progress / 100; // Convert to 0-1 range
+              const overallProgress = ((completedItems + itemProgress) / totalItems) * 100;
+              setUploadProgress(Math.min(overallProgress, 100));
+            });
+
+            completedItems++;
+            toast.success(`Video ${i + 1} of ${uploadForm.videos.length} uploaded successfully`, {
+              position: "top-center",
+              autoClose: 2000,
+            });
+          } catch (err: any) {
+            failedVideos.push(uploadForm.videos[i].name);
+            completedItems++; // Count as completed even if failed to continue progress
+            toast.error(`Failed to upload video "${uploadForm.videos[i].name}": ${err.message || "Unknown error"}`, {
+              position: "top-center",
+              autoClose: 5000,
+            });
+          }
+        }
+
+        if (failedVideos.length > 0) {
+          toast.warning(`${failedVideos.length} video(s) failed to upload: ${failedVideos.join(", ")}`, {
+            position: "top-center",
+            autoClose: 8000,
+          });
+        }
+      }
+
+      // Upload PDFs together (they're smaller, so less likely to timeout)
+      if (uploadForm.pdfs.length > 0) {
+        const pdfFormData = new FormData();
+        pdfFormData.append("parentId", uploadForm.collectionId);
+        pdfFormData.append("description", uploadForm.description || "");
+        pdfFormData.append("pdfTitles", JSON.stringify(uploadForm.pdfTitles));
+        if (allowedMedia.allowPDF)
+          pdfFormData.append("pdfDownloadable", uploadForm.pdfDownloadable.toString());
+        uploadForm.pdfs.forEach((file) => pdfFormData.append("pdfs", file));
+        pdfFormData.append("uploadedBy", userId);
+
+        const totalItems = uploadForm.videos.length + uploadForm.pdfs.length;
+        const completedItems = uploadForm.videos.length;
+
+        await uploadMedia(pdfFormData, (progress) => {
+          // Calculate overall progress: completed videos + current PDF progress
+          const pdfProgress = (progress / 100) * uploadForm.pdfs.length; // Each PDF gets equal weight
+          const overallProgress = ((completedItems + pdfProgress) / totalItems) * 100;
+          setUploadProgress(Math.min(overallProgress, 100));
+        });
+
+        toast.success(`PDF${uploadForm.pdfs.length > 1 ? 's' : ''} uploaded successfully`, {
+          position: "top-center",
+          autoClose: 2000,
+        });
+      }
+
+      // Refetch collections after all uploads complete
+      if (onUploadComplete) {
+        await onUploadComplete();
+      }
 
       setUploadForm({
         collectionId: "",
@@ -155,12 +267,21 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
       if (pdfInputRef.current) pdfInputRef.current.value = "";
       setError(null);
 
-      toast.success("Media uploaded successfully", { position: "top-center" });
+      toast.success("All media uploaded successfully", { position: "top-center" });
     } catch (err: any) {
       const errorMessage =
-        err.response?.data?.message || err.message || "Failed to upload media";
+        err.message || err.response?.data?.message || "Failed to upload media";
       setError(errorMessage);
-      toast.error(errorMessage, { position: "top-center" });
+      
+      // Show specific error messages for timeout issues
+      if (errorMessage.includes('timeout') || errorMessage.includes('Gateway timeout')) {
+        toast.error(errorMessage, { 
+          position: "top-center",
+          autoClose: 8000,
+        });
+      } else {
+        toast.error(errorMessage, { position: "top-center" });
+      }
     } finally {
       setIsUploading(false);
       setUploadProgress(0);
@@ -178,7 +299,30 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
         </h2>
       </div>
       <form onSubmit={handleUpload} className="space-y-6">
-        {error && <p className="text-center text-red-600">{error}</p>}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-center text-red-600 font-medium">{error}</p>
+            {error.includes('timeout') && (
+              <p className="text-center text-red-500 text-sm mt-2">
+                Tip: Try uploading a smaller file or check your internet connection.
+              </p>
+            )}
+          </div>
+        )}
+        {isUploading && uploadProgress > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Uploading...</span>
+              <span>{uploadProgress.toFixed(1)}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -223,12 +367,49 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
                   multiple
                   onChange={(e) => {
                     const files = Array.from(e.target.files || []);
-                    setUploadForm((prev) => ({
-                      ...prev,
-                      videos: files,
-                      videoTitles: files.map(() => ""),
-                      thumbnails: files.map(() => null as any),
-                    }));
+                    const validFiles: File[] = [];
+                    files.forEach((file) => {
+                      if (file.size > MAX_VIDEO_SIZE) {
+                        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                        toast.error(`Video "${file.name}" is too large (${sizeMB}MB). Maximum size is 100MB.`, {
+                          position: "top-center",
+                          autoClose: 5000,
+                        });
+                      } else if (!file.type.startsWith("video/")) {
+                        toast.error(`File "${file.name}" is not a valid video file.`, {
+                          position: "top-center",
+                        });
+                      } else {
+                        validFiles.push(file);
+                      }
+                    });
+                    if (validFiles.length > 0) {
+                      setUploadForm((prev) => {
+                        // Filter out duplicates by name and size
+                        const existing = prev.videos;
+                        const newFiles = validFiles.filter(
+                          (file) =>
+                            !existing.some(
+                              (f) => f.name === file.name && f.size === file.size
+                            )
+                        );
+                        const updatedVideos = [...existing, ...newFiles];
+                        const updatedVideoTitles = [
+                          ...prev.videoTitles,
+                          ...newFiles.map(() => ""),
+                        ];
+                        const updatedThumbnails = [
+                          ...prev.thumbnails,
+                          ...newFiles.map(() => null as any),
+                        ];
+                        return {
+                          ...prev,
+                          videos: updatedVideos,
+                          videoTitles: updatedVideoTitles,
+                          thumbnails: updatedThumbnails,
+                        };
+                      });
+                    }
                   }}
                   className="hidden"
                   id="video-upload"
@@ -288,13 +469,35 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
                         placeholder={`Title for video ${index + 1}`}
                         className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       />
-                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-2 text-center">
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,image/webp"
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Thumbnail * <span className="text-red-500">(Required)</span>
+                        </label>
+                        <div className={`border-2 border-dashed rounded-lg p-2 text-center ${
+                          uploadForm.thumbnails[index] 
+                            ? 'border-green-300 bg-green-50' 
+                            : 'border-red-300 bg-red-50'
+                        }`}>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
                           onChange={(e) => {
                             const thumbnail = e.target.files?.[0] || null;
                             if (thumbnail) {
+                              if (thumbnail.size > MAX_THUMBNAIL_SIZE) {
+                                const sizeMB = (thumbnail.size / (1024 * 1024)).toFixed(2);
+                                toast.error(`Thumbnail "${thumbnail.name}" is too large (${sizeMB}MB). Maximum size is 5MB.`, {
+                                  position: "top-center",
+                                  autoClose: 5000,
+                                });
+                                return;
+                              }
+                              if (!thumbnail.type.startsWith("image/")) {
+                                toast.error(`File "${thumbnail.name}" is not a valid image file.`, {
+                                  position: "top-center",
+                                });
+                                return;
+                              }
                               const newThumbnails = [...uploadForm.thumbnails];
                               newThumbnails[index] = thumbnail;
                               setUploadForm((prev) => ({
@@ -303,28 +506,34 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
                               }));
                             }
                           }}
-                          className="hidden"
-                          id={`thumbnail-upload-${index}`}
-                        />
-                        <label
-                          htmlFor={`thumbnail-upload-${index}`}
-                          className="cursor-pointer"
-                        >
-                          <div className="text-sm text-gray-600">
-                            {uploadForm.thumbnails[index]
-                              ? uploadForm.thumbnails[index].name
-                              : `Select thumbnail for video ${index + 1}`}
-                          </div>
-                        </label>
-                        {uploadForm.thumbnails[index] && (
-                          <img
-                            src={URL.createObjectURL(
-                              uploadForm.thumbnails[index]
-                            )}
-                            alt={`Thumbnail ${index + 1}`}
-                            className="w-full max-h-32 object-contain rounded-lg mt-2"
+                            className="hidden"
+                            id={`thumbnail-upload-${index}`}
+                            required
                           />
-                        )}
+                          <label
+                            htmlFor={`thumbnail-upload-${index}`}
+                            className="cursor-pointer"
+                          >
+                            <div className={`text-sm ${
+                              uploadForm.thumbnails[index]
+                                ? 'text-green-700 font-medium'
+                                : 'text-red-600 font-medium'
+                            }`}>
+                              {uploadForm.thumbnails[index]
+                                ? `✓ ${uploadForm.thumbnails[index].name}`
+                                : `⚠ Select thumbnail for video ${index + 1} (Required)`}
+                            </div>
+                          </label>
+                          {uploadForm.thumbnails[index] && (
+                            <img
+                              src={URL.createObjectURL(
+                                uploadForm.thumbnails[index]
+                              )}
+                              alt={`Thumbnail ${index + 1}`}
+                              className="w-full max-h-32 object-contain rounded-lg mt-2"
+                            />
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -345,26 +554,40 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
                   multiple
                   onChange={(e) => {
                     const files = Array.from(e.target.files || []);
-                    setUploadForm((prev) => {
-                      // Filter out duplicates by name and size
-                      const existing = prev.pdfs;
-                      const newFiles = files.filter(
-                        (file) =>
-                          !existing.some(
-                            (f) => f.name === file.name && f.size === file.size
-                          )
-                      );
-                      const updatedPdfs = [...existing, ...newFiles];
-                      const updatedPdfTitles = [
-                        ...prev.pdfTitles,
-                        ...newFiles.map(() => ""),
-                      ];
-                      return {
-                        ...prev,
-                        pdfs: updatedPdfs,
-                        pdfTitles: updatedPdfTitles,
-                      };
+                    const validFiles: File[] = [];
+                    files.forEach((file) => {
+                      if (file.size > MAX_PDF_SIZE) {
+                        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                        toast.error(`File "${file.name}" is too large (${sizeMB}MB). Maximum size is 10MB.`, {
+                          position: "top-center",
+                          autoClose: 5000,
+                        });
+                      } else {
+                        validFiles.push(file);
+                      }
                     });
+                    if (validFiles.length > 0) {
+                      setUploadForm((prev) => {
+                        // Filter out duplicates by name and size
+                        const existing = prev.pdfs;
+                        const newFiles = validFiles.filter(
+                          (file) =>
+                            !existing.some(
+                              (f) => f.name === file.name && f.size === file.size
+                            )
+                        );
+                        const updatedPdfs = [...existing, ...newFiles];
+                        const updatedPdfTitles = [
+                          ...prev.pdfTitles,
+                          ...newFiles.map(() => ""),
+                        ];
+                        return {
+                          ...prev,
+                          pdfs: updatedPdfs,
+                          pdfTitles: updatedPdfTitles,
+                        };
+                      });
+                    }
                   }}
                   className="hidden"
                   id="pdf-upload"
@@ -467,7 +690,9 @@ const UploadMediaForm: React.FC<UploadMediaFormProps> = ({
               (uploadForm.pdfs.length > 0 &&
                 uploadForm.pdfs.length !== uploadForm.pdfTitles.length) ||
               (uploadForm.videos.length > 0 &&
-                uploadForm.videos.length !== uploadForm.thumbnails.length)
+                uploadForm.videos.length !== uploadForm.thumbnails.length) ||
+              (uploadForm.videos.length > 0 &&
+                uploadForm.thumbnails.some((thumb) => !thumb || !(thumb instanceof File)))
             }
             className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
           >

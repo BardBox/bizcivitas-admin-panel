@@ -10,6 +10,8 @@ import Bold from "@tiptap/extension-bold";
 import Italic from "@tiptap/extension-italic";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
+import HardBreak from "@tiptap/extension-hard-break";
+import Paragraph from "@tiptap/extension-paragraph";
 import { Extension } from "@tiptap/core";
 import {
   FiBold,
@@ -87,6 +89,33 @@ const FontSize = Extension.create({
             .run();
         },
     };
+  },
+});
+
+// Custom Paragraph extension that preserves empty paragraphs
+const CustomParagraph = Paragraph.extend({
+  renderHTML({ node, HTMLAttributes }) {
+    // If paragraph is empty, add zero-width space to preserve it
+    if (node.content.size === 0) {
+      return ['p', HTMLAttributes, '\u200B'];
+    }
+    return ['p', HTMLAttributes, 0];
+  },
+  parseHTML() {
+    return [
+      {
+        tag: 'p',
+        preserveWhitespace: 'full',
+        getAttrs: (node) => {
+          const element = node as HTMLElement;
+          // Preserve empty paragraphs
+          if (!element.textContent?.trim() && !element.innerHTML.includes('<br')) {
+            return {};
+          }
+          return {};
+        },
+      },
+    ];
   },
 });
 
@@ -204,7 +233,15 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        // Disable default paragraph to use our custom one
+        paragraph: false,
+      }),
+      CustomParagraph.configure({
+        HTMLAttributes: {
+          class: "tiptap-paragraph",
+        },
+      }),
       TextStyle,
       FontSize,
       LineHeight,
@@ -225,6 +262,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       Bold,
       Italic,
       Underline,
+      HardBreak.configure({
+        HTMLAttributes: {
+          class: "tiptap-hard-break",
+        },
+      }),
       Link.configure({
         openOnClick: false,
         HTMLAttributes: {
@@ -241,8 +283,27 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         class:
           "prose prose-sm sm:prose lg:prose-lg xl:prose-2xl mx-auto focus:outline-none min-h-[120px] p-3",
       },
+      // Handle Enter key to create new paragraphs (line breaks)
+      handleKeyDown: (_view, event) => {
+        // Allow Enter to create new paragraphs
+        if (event.key === "Enter" && !event.shiftKey) {
+          return false; // Let TipTap handle it normally (creates new paragraph)
+        }
+        // Shift+Enter creates hard break (<br>)
+        if (event.key === "Enter" && event.shiftKey) {
+          return false; // Let TipTap handle it normally (creates hard break)
+        }
+        return false;
+      },
     },
   });
+
+  // Update editor content when content prop changes
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content, { emitUpdate: false });
+    }
+  }, [content, editor]);
 
   const addLink = () => {
     const previousUrl = editor?.getAttributes("link").href;
@@ -553,6 +614,23 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         .rich-text-editor-content p {
           margin: 0.5rem 0;
           line-height: 1.6;
+          min-height: 1.2em; /* Ensure empty paragraphs are visible */
+        }
+        
+        /* Preserve empty paragraphs - handle both truly empty and those with zero-width space */
+        .rich-text-editor-content p:empty {
+          min-height: 1.2em;
+          display: block;
+        }
+        
+        /* Ensure paragraphs with only zero-width space are visible */
+        .rich-text-editor-content p:has-text("\u200B") {
+          min-height: 1.2em;
+        }
+        
+        .rich-text-editor-content .tiptap-hard-break {
+          display: block;
+          margin: 0.5rem 0;
         }
 
         .rich-text-editor-content strong {

@@ -21,7 +21,7 @@ export const DeleteConfirmationModal: React.FC<
         </h2>
         <p className="text-gray-600 mb-6">
           Are you sure you want to delete
-          {eventName ? ` "${eventName}"` : " this event"}? This action cannot be
+          {eventName ? ` "${eventName}"` : " this item"}? This action cannot be
           undone.
         </p>
         <div className="flex justify-end gap-4">

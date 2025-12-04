@@ -73,27 +73,37 @@ const useMediaDashboard = () => {
     }
   };
 
-  const uploadMedia = async (formData: FormData) => {
+  const uploadMedia = async (formData: FormData, onProgress?: (progress: number) => void) => {
     setLoading(true);
     try {
-      const response = await collectionApi.uploadMedia(formData, {
+      await collectionApi.uploadMedia(formData, {
         onUploadProgress: (progressEvent: ProgressEvent) => {
           const percentCompleted = parseFloat(
             ((progressEvent.loaded / (progressEvent.total || 1)) * 100).toFixed(2)
           );
           console.log(`Upload Progress: ${percentCompleted}%`);
+          if (onProgress) {
+            onProgress(percentCompleted);
+          }
         },
       });
-      const { collectionId, media } = response.data;
-      setCollections((prev) =>
-        prev.map((col) =>
-          col._id === collectionId ? { ...col, subItems: [...(col.subItems || []), ...media] } : col
-        )
-      );
+      // Refetch collections to ensure UI is in sync with server
+      await Promise.all([fetchAllCollections(), fetchSavedCollections()]);
       toast.success("Media uploaded successfully", { position: "top-center" });
     } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to upload media");
-      toast.error(err.response?.data?.message || "Failed to upload media", { position: "top-center" });
+      const errorMessage = err.message || err.response?.data?.message || "Failed to upload media";
+      setError(errorMessage);
+      
+      // Show specific error messages for timeout issues
+      if (errorMessage.includes('timeout') || errorMessage.includes('Gateway timeout')) {
+        toast.error(errorMessage, { 
+          position: "top-center",
+          autoClose: 8000,
+        });
+      } else {
+        toast.error(errorMessage, { position: "top-center" });
+      }
+      throw err; // Re-throw to let the form handle it
     } finally {
       setLoading(false);
     }
@@ -103,18 +113,8 @@ const useMediaDashboard = () => {
     setLoading(true);
     try {
       await collectionApi.deleteMedia(mediaId);
-      setCollections((prev) =>
-        prev.map((col) => ({
-          ...col,
-          subItems: col.subItems.filter((item: any) => item._id !== mediaId),
-        }))
-      );
-      setSavedCollections((prev) =>
-        prev.map((col) => ({
-          ...col,
-          subItems: col.subItems.filter((item: any) => item._id !== mediaId),
-        }))
-      );
+      // Refetch collections to ensure UI is in sync with server
+      await Promise.all([fetchAllCollections(), fetchSavedCollections()]);
       toast.success("Media deleted successfully", { position: "top-center" });
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to delete media");
@@ -129,8 +129,8 @@ const useMediaDashboard = () => {
     setLoading(true);
     try {
       await collectionApi.deleteCollection(collectionId);
-      setCollections((prev) => prev.filter((col) => col._id !== collectionId));
-      setSavedCollections((prev) => prev.filter((col) => col._id !== collectionId));
+      // Refetch collections to ensure UI is in sync with server
+      await Promise.all([fetchAllCollections(), fetchSavedCollections()]);
       toast.success("Collection deleted successfully", { position: "top-center" });
     } catch (err: any) {
       setError(err.response?.data?.message || "Failed to delete collection");
@@ -282,7 +282,9 @@ const UploadPage: React.FC = () => {
 
   const handleDeleteConfirm = () => {
     if (mediaToDelete?._id) {
-      if (mediaToDelete.type === "collection") {
+      const isCollection = 'subItems' in mediaToDelete || !('folder' in mediaToDelete);
+      
+      if (isCollection) {
         deleteCollection(mediaToDelete._id);
       } else {
         deleteMedia(mediaToDelete._id);
@@ -301,7 +303,13 @@ const UploadPage: React.FC = () => {
             setCollections={setCollections} 
             setShowCreateCollection={setShowCreateCollection}
           />
-          <UploadMediaForm collections={collections} uploadMedia={uploadMedia} />
+          <UploadMediaForm 
+            collections={collections} 
+            uploadMedia={uploadMedia}
+            onUploadComplete={async () => {
+              await Promise.all([fetchAllCollections(), fetchSavedCollections()]);
+            }}
+          />
         </div>
       )}
 
@@ -392,6 +400,7 @@ const UploadPage: React.FC = () => {
         onClose={() => setIsDeleteConfirmOpen(false)}
         onConfirm={handleDeleteConfirm}
         isLoading={loading}
+        eventName={mediaToDelete?.title || mediaToDelete?.name || undefined}
       />
 
       <MediaViewerModal viewerModal={viewerModal} setViewerModal={setViewerModal} />
