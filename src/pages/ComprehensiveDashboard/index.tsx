@@ -8,15 +8,23 @@ import {
   CircularProgress,
   Tabs,
   Tab,
+  TextField,
+  Autocomplete,
+  Chip,
 } from "@mui/material";
 import {
   Users,
   Award,
   UserPlus,
+  Filter,
 } from "lucide-react";
 import api from "../../api/api";
 import { toast } from "react-toastify";
 import ReferralAnalytics from "../ReferralAnalytics";
+import BizWinAnalytics from "../BizWinAnalytics";
+import BizConnectAnalytics from "../BizConnectAnalytics";
+import InviteAnalytics from "../InviteAnalytics";
+import { Country, State } from "country-state-city";
 
 interface StatCardData {
   title: string;
@@ -27,9 +35,36 @@ interface StatCardData {
   subtitle?: string;
 }
 
+interface Zone {
+  _id: string;
+  zoneName: string;
+  cityId: string;
+  stateId: string;
+  countryId: string;
+}
+
+interface Area {
+  _id: string;
+  areaName: string;
+  zoneId: string;
+}
+
 export default function ComprehensiveDashboard() {
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Hierarchical Filter States
+  const [selectedCountry, setSelectedCountry] = useState<any>(null);
+  const [selectedState, setSelectedState] = useState<any>(null);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
+  const [selectedZone, setSelectedZone] = useState<Zone | null>(null);
+  const [selectedArea, setSelectedArea] = useState<Area | null>(null);
+  const [filterLevel, setFilterLevel] = useState<"platform" | "country" | "state" | "zone" | "area">("platform");
+
+  // Country and State data
+  const countries = Country.getAllCountries();
+  const states = selectedCountry ? State.getStatesOfCountry(selectedCountry.isoCode) : [];
 
   // State for different stats
   const [bizWinOverview, setBizWinOverview] = useState({ totalRecords: 0, totalAmount: 0 });
@@ -38,7 +73,94 @@ export default function ComprehensiveDashboard() {
 
   useEffect(() => {
     fetchAllDashboardData();
-  }, []);
+  }, [filterLevel, selectedZone, selectedArea]);
+
+  // Cascade: Country change → reset state, zone, area
+  useEffect(() => {
+    if (selectedCountry) {
+      setSelectedState(null);
+      setZones([]);
+      setSelectedZone(null);
+      setAreas([]);
+      setSelectedArea(null);
+      setFilterLevel("country");
+    } else {
+      setSelectedState(null);
+      setZones([]);
+      setSelectedZone(null);
+      setAreas([]);
+      setSelectedArea(null);
+      setFilterLevel("platform");
+    }
+  }, [selectedCountry]);
+
+  // Cascade: State change → fetch zones, reset zone and area
+  useEffect(() => {
+    if (selectedState && selectedCountry) {
+      fetchZonesByCountryState(selectedCountry.name, selectedState.name);
+      setSelectedZone(null);
+      setAreas([]);
+      setSelectedArea(null);
+      setFilterLevel("state");
+    } else if (selectedCountry) {
+      setZones([]);
+      setSelectedZone(null);
+      setAreas([]);
+      setSelectedArea(null);
+    }
+  }, [selectedState, selectedCountry]);
+
+  // Cascade: Zone change → fetch areas, reset area
+  useEffect(() => {
+    if (selectedZone) {
+      fetchAreasByZone(selectedZone._id);
+      setSelectedArea(null);
+      setFilterLevel("zone");
+    } else if (selectedState) {
+      setAreas([]);
+      setSelectedArea(null);
+      setFilterLevel("state");
+    }
+  }, [selectedZone, selectedState]);
+
+  // Update filter level based on area selection
+  useEffect(() => {
+    if (selectedArea) {
+      setFilterLevel("area");
+    } else if (selectedZone) {
+      setFilterLevel("zone");
+    }
+  }, [selectedArea]);
+
+  const fetchZonesByCountryState = async (countryName: string, stateName: string) => {
+    try {
+      console.log("Fetching zones for:", { countryName, stateName });
+      const response = await api.get(`/zones?countryId=${encodeURIComponent(countryName)}&stateId=${encodeURIComponent(stateName)}`);
+      console.log("Zones API response:", response.data);
+
+      if (response.data.success) {
+        const zonesData = response.data.data?.zones || [];
+        console.log("Zones data:", zonesData);
+        setZones(Array.isArray(zonesData) ? zonesData : []);
+      }
+    } catch (error) {
+      console.error("Error fetching zones:", error);
+      setZones([]);
+    }
+  };
+
+  const fetchAreasByZone = async (zoneId: string) => {
+    try {
+      const response = await api.get(`/zones/${zoneId}/areas`);
+      if (response.data.success) {
+        const areasData = response.data.data?.areas || [];
+        setAreas(Array.isArray(areasData) ? areasData : []);
+      }
+    } catch (error) {
+      console.error("Error fetching areas:", error);
+      setAreas([]);
+    }
+  };
 
   const fetchAllDashboardData = async () => {
     setLoading(true);
@@ -58,7 +180,23 @@ export default function ComprehensiveDashboard() {
 
   const fetchBizWinOverview = async () => {
     try {
-      const response = await api.get("/record/");
+      const params: any = {};
+
+      // Country and State level filtering
+      if (selectedCountry && filterLevel === "country") {
+        params.country = selectedCountry.name;
+      }
+      if (selectedState && (filterLevel === "state" || filterLevel === "zone" || filterLevel === "area")) {
+        params.state = selectedState.name;
+      }
+
+      // Zone and Area level filtering
+      if (filterLevel === "zone" && selectedZone) params.zoneId = selectedZone._id;
+      if (filterLevel === "area" && selectedArea) params.areaId = selectedArea._id;
+
+      console.log("📊 Fetching BizWin Overview with params:", { filterLevel, params });
+
+      const response = await api.get("/record/", { params });
       if (response.data.success) {
         const records = response.data.data;
         const totalAmount = records.reduce((sum: number, record: any) => sum + (record.amount || 0), 0);
@@ -74,9 +212,25 @@ export default function ComprehensiveDashboard() {
 
   const fetchBizConnectOverview = async () => {
     try {
+      const params: any = {};
+
+      // Country and State level filtering
+      if (selectedCountry && filterLevel === "country") {
+        params.country = selectedCountry.name;
+      }
+      if (selectedState && (filterLevel === "state" || filterLevel === "zone" || filterLevel === "area")) {
+        params.state = selectedState.name;
+      }
+
+      // Zone and Area level filtering
+      if (filterLevel === "zone" && selectedZone) params.zoneId = selectedZone._id;
+      if (filterLevel === "area" && selectedArea) params.areaId = selectedArea._id;
+
+      console.log("📊 Fetching BizConnect Overview with params:", { filterLevel, params });
+
       const [allTimeRes, last15DaysRes] = await Promise.all([
-        api.get("/meetup/all-time-count"),
-        api.get("/meetup/meeting-count"),
+        api.get("/meetup/all-time-count", { params }),
+        api.get("/meetup/meeting-count", { params }),
       ]);
 
       if (allTimeRes.data.success && last15DaysRes.data.success) {
@@ -92,7 +246,23 @@ export default function ComprehensiveDashboard() {
 
   const fetchReferralOverview = async () => {
     try {
-      const response = await api.get("/referrals");
+      const params: any = {};
+
+      // Country and State level filtering
+      if (selectedCountry && filterLevel === "country") {
+        params.country = selectedCountry.name;
+      }
+      if (selectedState && (filterLevel === "state" || filterLevel === "zone" || filterLevel === "area")) {
+        params.state = selectedState.name;
+      }
+
+      // Zone and Area level filtering
+      if (filterLevel === "zone" && selectedZone) params.zoneId = selectedZone._id;
+      if (filterLevel === "area" && selectedArea) params.areaId = selectedArea._id;
+
+      console.log("📊 Fetching Referral Overview with params:", { filterLevel, params });
+
+      const response = await api.get("/referrals", { params });
 
       if (response.data.success) {
         const referrals = response.data.data || [];
@@ -155,8 +325,19 @@ export default function ComprehensiveDashboard() {
     },
   ];
 
+  const handleClearFilters = () => {
+    setSelectedCountry(null);
+    setSelectedState(null);
+    setSelectedZone(null);
+    setSelectedArea(null);
+    setZones([]);
+    setAreas([]);
+    setFilterLevel("platform");
+  };
+
   return (
     <Box sx={{ p: 3, bgcolor: "#f8fafc", minHeight: "100vh" }}>
+      {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" sx={{ fontWeight: 700, color: "#1e293b", mb: 1 }}>
           Comprehensive Admin Dashboard
@@ -165,6 +346,133 @@ export default function ComprehensiveDashboard() {
           Complete overview of BizWin, BizConnect, and Invite Analytics
         </Typography>
       </Box>
+
+      {/* Hierarchical Filters */}
+      <Card sx={{ mb: 4, borderRadius: 3, boxShadow: "0 2px 8px rgba(0,0,0,0.08)" }}>
+        <CardContent>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 2, mb: 2 }}>
+            <Filter size={24} color="#3b82f6" />
+            <Typography variant="h6" sx={{ fontWeight: 600, color: "#1e293b" }}>
+              Filter Data by Hierarchy
+            </Typography>
+            {filterLevel !== "platform" && (
+              <Chip
+                label={`Filter: ${filterLevel.charAt(0).toUpperCase() + filterLevel.slice(1)} Level`}
+                color="primary"
+                size="small"
+                onDelete={handleClearFilters}
+                sx={{ ml: "auto" }}
+              />
+            )}
+          </Box>
+
+          <Grid container spacing={2}>
+            {/* Row 1: Country, State, Zone */}
+            <Grid item xs={12} md={3}>
+              <Autocomplete
+                options={countries}
+                getOptionLabel={(option) => option.name}
+                value={selectedCountry}
+                onChange={(_, newValue) => setSelectedCountry(newValue)}
+                isOptionEqualToValue={(option, value) => option.isoCode === value.isoCode}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Country"
+                    placeholder="Select Country"
+                    size="small"
+                  />
+                )}
+                sx={{ bgcolor: "white" }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <Autocomplete
+                options={states}
+                getOptionLabel={(option) => option.name}
+                value={selectedState}
+                onChange={(_, newValue) => setSelectedState(newValue)}
+                disabled={!selectedCountry}
+                isOptionEqualToValue={(option, value) => option.isoCode === value.isoCode}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="State"
+                    placeholder={selectedCountry ? "Select State" : "Select country first"}
+                    size="small"
+                  />
+                )}
+                sx={{ bgcolor: selectedCountry ? "white" : "#f8fafc" }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <Autocomplete
+                options={zones || []}
+                getOptionLabel={(option) => option.zoneName}
+                value={selectedZone}
+                onChange={(_, newValue) => setSelectedZone(newValue)}
+                disabled={!selectedState}
+                isOptionEqualToValue={(option, value) => option._id === value._id}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Zone (City)"
+                    placeholder={selectedState ? "Select Zone" : "Select state first"}
+                    size="small"
+                  />
+                )}
+                sx={{ bgcolor: selectedState ? "white" : "#f8fafc" }}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <Autocomplete
+                options={areas || []}
+                getOptionLabel={(option) => option.areaName}
+                value={selectedArea}
+                onChange={(_, newValue) => setSelectedArea(newValue)}
+                disabled={!selectedZone}
+                isOptionEqualToValue={(option, value) => option._id === value._id}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    label="Area"
+                    placeholder={selectedZone ? "Select Area" : "Select zone first"}
+                    size="small"
+                  />
+                )}
+                sx={{ bgcolor: selectedZone ? "white" : "#f8fafc" }}
+              />
+            </Grid>
+
+            {/* Row 2: Filter Status Display */}
+            <Grid item xs={12}>
+              <Box
+                sx={{
+                  p: 2,
+                  bgcolor: "#eff6ff",
+                  borderRadius: 2,
+                  border: "1px solid #bfdbfe",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                }}
+              >
+                <Filter size={16} color="#1e40af" />
+                <Typography variant="body2" sx={{ color: "#1e40af", fontWeight: 500 }}>
+                  {filterLevel === "platform" && "Showing platform-wide data"}
+                  {filterLevel === "country" && `Showing data for ${selectedCountry?.name}`}
+                  {filterLevel === "state" && `Showing data for ${selectedState?.name}, ${selectedCountry?.name}`}
+                  {filterLevel === "zone" && `Showing data for ${selectedZone?.zoneName} (${selectedZone?.cityId}), ${selectedState?.name}`}
+                  {filterLevel === "area" && `Showing data for ${selectedArea?.areaName} → ${selectedZone?.zoneName} → ${selectedState?.name} → ${selectedCountry?.name}`}
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {overviewCards.map((card, index) => {
@@ -233,55 +541,51 @@ export default function ComprehensiveDashboard() {
           }}
         >
           <Tab label="BizWin Analytics" />
-          <Tab label="BizConnect Analytics" />
+          <Tab label="BizConnect (Referrals)" />
+          <Tab label="Meetups Analytics" />
           <Tab label="Invite Analytics" />
         </Tabs>
 
-        <CardContent sx={{ p: 3 }}>
+        <CardContent sx={{ p: 0 }}>
           {activeTab === 0 && (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: "400px",
-                textAlign: "center",
-              }}
-            >
-              <Typography variant="h4" sx={{ fontWeight: 700, color: "#1e293b", mb: 2 }}>
-                BizWin Analytics Coming Soon
-              </Typography>
-              <Typography variant="body1" sx={{ color: "#64748b", maxWidth: "500px" }}>
-                BizWin analytics are being updated. Please check back soon!
-              </Typography>
+            <Box>
+              <BizWinAnalytics
+                filterLevel={filterLevel}
+                selectedCountry={selectedCountry}
+                selectedState={selectedState}
+                selectedZone={selectedZone}
+                selectedArea={selectedArea}
+              />
             </Box>
           )}
 
           {activeTab === 1 && (
             <Box>
-              <ReferralAnalytics />
+              <ReferralAnalytics
+                filterLevel={filterLevel}
+                selectedZone={selectedZone}
+                selectedArea={selectedArea}
+              />
             </Box>
           )}
 
           {activeTab === 2 && (
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                minHeight: "400px",
-                textAlign: "center",
-              }}
-            >
-              <Users size={80} color="#8b5cf6" style={{ marginBottom: 24, opacity: 0.5 }} />
-              <Typography variant="h4" sx={{ fontWeight: 700, color: "#1e293b", mb: 2 }}>
-                Coming Soon
-              </Typography>
-              <Typography variant="body1" sx={{ color: "#64748b", maxWidth: "500px" }}>
-                Invite Analytics is currently under development.
-              </Typography>
+            <Box>
+              <BizConnectAnalytics
+                filterLevel={filterLevel}
+                selectedZone={selectedZone}
+                selectedArea={selectedArea}
+              />
+            </Box>
+          )}
+
+          {activeTab === 3 && (
+            <Box>
+              <InviteAnalytics
+                filterLevel={filterLevel}
+                selectedZone={selectedZone}
+                selectedArea={selectedArea}
+              />
             </Box>
           )}
         </CardContent>

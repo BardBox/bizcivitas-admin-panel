@@ -23,9 +23,6 @@ import {
 import {
   Download,
   Search,
-  TrendingUp,
-  DollarSign,
-  Users,
   Trash2,
 } from "lucide-react";
 import api from "../../api/api";
@@ -85,7 +82,21 @@ interface TYFCBRecord {
 
 type DateFilterType = "15days" | "3months" | "6months" | "tilldate";
 
-export default function BizWinAnalytics() {
+interface BizWinAnalyticsProps {
+  filterLevel?: "platform" | "country" | "state" | "zone" | "area";
+  selectedCountry?: { name: string; isoCode: string } | null;
+  selectedState?: { name: string; isoCode: string } | null;
+  selectedZone?: { _id: string; zoneName: string } | null;
+  selectedArea?: { _id: string; areaName: string } | null;
+}
+
+export default function BizWinAnalytics({
+  filterLevel = "platform",
+  selectedCountry = null,
+  selectedState = null,
+  selectedZone = null,
+  selectedArea = null,
+}: BizWinAnalyticsProps = {}) {
   const [records, setRecords] = useState<TYFCBRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<TYFCBRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,7 +153,7 @@ export default function BizWinAnalytics() {
   useEffect(() => {
     fetchAllRecords();
     fetchAllCitiesAndMemberships();
-  }, []);
+  }, [filterLevel, selectedCountry, selectedState, selectedZone, selectedArea]);
 
   useEffect(() => {
     applyFilters();
@@ -156,6 +167,9 @@ export default function BizWinAnalytics() {
     pincodeFilter,
     membershipFilter,
     dateFilter,
+    selectedZone,
+    selectedArea,
+    filterLevel,
   ]);
 
   // Load countries on mount
@@ -242,7 +256,23 @@ export default function BizWinAnalytics() {
   const fetchAllRecords = async () => {
     setLoading(true);
     try {
-      const response = await api.get("/record/");
+      const params: any = {};
+
+      // Country and State level filtering
+      if (selectedCountry && filterLevel === "country") {
+        params.country = selectedCountry.name;
+      }
+      if (selectedState && (filterLevel === "state" || filterLevel === "zone" || filterLevel === "area")) {
+        params.state = selectedState.name;
+      }
+
+      // Zone and Area level filtering
+      if (filterLevel === "zone" && selectedZone) params.zoneId = selectedZone._id;
+      if (filterLevel === "area" && selectedArea) params.areaId = selectedArea._id;
+
+      console.log("🔍 BizWin Fetching with params:", { filterLevel, params, selectedCountry, selectedState, selectedZone, selectedArea });
+
+      const response = await api.get("/record/", { params });
       if (response.data.success) {
         const data = response.data.data;
         setRecords(data);
@@ -803,16 +833,7 @@ export default function BizWinAnalytics() {
     toast.success("CSV downloaded successfully!");
   };
 
-  const totalAmount = filteredRecords.reduce(
-    (sum, record) => sum + (record.amount || 0),
-    0
-  );
-  const uniqueUsers = new Set(
-    [
-      ...filteredRecords.map((r) => r.from?._id),
-      ...filteredRecords.map((r) => r.to?._id),
-    ].filter(Boolean)
-  ).size;
+
 
   if (loading) {
     return (
@@ -836,106 +857,6 @@ export default function BizWinAnalytics() {
           Detailed platform-wide revenue and business transaction analysis
         </Typography>
       </Box>
-
-      {/* Stats Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={4}>
-          <Card
-            sx={{
-              background:
-                "linear-gradient(135deg, #10b98115 0%, #10b98125 100%)",
-              border: "2px solid #10b98130",
-              borderRadius: 3,
-            }}
-          >
-            <CardContent>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <Box>
-                  <Typography sx={{ color: "#64748b", fontSize: 14, mb: 1 }}>
-                    Total Revenue
-                  </Typography>
-                  <Typography
-                    sx={{ fontSize: 28, fontWeight: 700, color: "#10b981" }}
-                  >
-                    {formatCurrency(totalAmount)}
-                  </Typography>
-                </Box>
-                <DollarSign size={40} color="#10b981" />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Card
-            sx={{
-              background:
-                "linear-gradient(135deg, #3b82f615 0%, #3b82f625 100%)",
-              border: "2px solid #3b82f630",
-              borderRadius: 3,
-            }}
-          >
-            <CardContent>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <Box>
-                  <Typography sx={{ color: "#64748b", fontSize: 14, mb: 1 }}>
-                    Total Transactions
-                  </Typography>
-                  <Typography
-                    sx={{ fontSize: 28, fontWeight: 700, color: "#3b82f6" }}
-                  >
-                    {filteredRecords.length}
-                  </Typography>
-                </Box>
-                <TrendingUp size={40} color="#3b82f6" />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <Card
-            sx={{
-              background:
-                "linear-gradient(135deg, #f59e0b15 0%, #f59e0b25 100%)",
-              border: "2px solid #f59e0b30",
-              borderRadius: 3,
-            }}
-          >
-            <CardContent>
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <Box>
-                  <Typography sx={{ color: "#64748b", fontSize: 14, mb: 1 }}>
-                    Active Users
-                  </Typography>
-                  <Typography
-                    sx={{ fontSize: 28, fontWeight: 700, color: "#f59e0b" }}
-                  >
-                    {uniqueUsers}
-                  </Typography>
-                </Box>
-                <Users size={40} color="#f59e0b" />
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
 
       {/* Bulk Actions */}
       {selectedIds.length > 0 && (

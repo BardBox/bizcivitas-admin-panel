@@ -3,6 +3,7 @@ import "./App.css";
 import Dashboard from "./pages/Dashboard";
 import DashboardCore from "./pages/Dashboard-core";
 import DashboardFranchise from "./pages/Dashboard-franchise";
+import DashboardZone from "./pages/Dashboard-zone";
 import DashboardArea from "./pages/Dashboard-area";
 import DashboardCGC from "./pages/Dashboard-cgc";
 import DashboardDCP from "./pages/Dashboard-dcp";
@@ -75,8 +76,6 @@ function App() {
 
         {/* Private Routes (Only Logged-In Users) */}
         <Route element={<PrivateRoute />}>
-          <Route path="/dashboard" element={<Dashboard />} />
-
           <Route path="/AllEvents" element={<AllEventsLayout />}>
             <Route index element={<Navigate to="one-day" />} />
             <Route path="one-day" element={<OneDayEvent />} />
@@ -87,6 +86,7 @@ function App() {
 
         {/* Admin-Only Routes */}
         <Route element={<RoleBasedRoute allowedRoles={["admin"]} />}>
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/comprehensive-dashboard" element={<ComprehensiveDashboard />} />
           <Route path="/analytics" element={<AdminAnalytics />} />
           <Route path="/bizwin-analytics" element={<BizWinAnalytics />} />
@@ -145,9 +145,10 @@ function App() {
 
         </Route>
 
-        {/* Master Franchise Routes */}
-        <Route element={<RoleBasedRoute allowedRoles={["master-franchise"]} />}>
+        {/* Master Franchise and Admin - Franchise Dashboard Routes */}
+        <Route element={<RoleBasedRoute allowedRoles={["admin", "master-franchise"]} />}>
           <Route path="/dashboard-franchise" element={<DashboardFranchise />} />
+          <Route path="/dashboard-franchise/zone/:zoneId" element={<DashboardZone />} />
           <Route path="/dashboard-franchise/area/:areaId" element={<DashboardArea />} />
         </Route>
 

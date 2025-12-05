@@ -125,11 +125,11 @@ const ZoneList: React.FC = () => {
         { key: 'stateId', label: 'State' },
         { key: 'countryId', label: 'Country' },
         {
-            key: 'status',
-            label: 'Status',
+            key: 'zonePartner',
+            label: 'Zone Partner',
             render: (zone: Zone) => (
-                <Badge variant={zone.status === 'active' ? 'success' : 'warning'}>
-                    {zone.status.toUpperCase()}
+                <Badge variant={zone.assignedMFId ? 'success' : 'warning'}>
+                    {zone.assignedMFId ? 'ASSIGNED' : 'NOT ASSIGNED'}
                 </Badge>
             )
         },

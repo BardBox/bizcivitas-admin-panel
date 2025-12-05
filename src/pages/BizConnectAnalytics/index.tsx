@@ -51,7 +51,17 @@ interface MeetupRecord {
 
 type DateFilterType = "15days" | "3months" | "6months" | "tilldate";
 
-export default function BizConnectAnalytics() {
+interface BizConnectAnalyticsProps {
+  filterLevel?: "platform" | "country" | "state" | "zone" | "area";
+  selectedZone?: { _id: string; zoneName: string } | null;
+  selectedArea?: { _id: string; areaName: string } | null;
+}
+
+export default function BizConnectAnalytics({
+  filterLevel = "platform",
+  selectedZone = null,
+  selectedArea = null,
+}: BizConnectAnalyticsProps = {}) {
   const [records, setRecords] = useState<MeetupRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<MeetupRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -69,7 +79,7 @@ export default function BizConnectAnalytics() {
 
   useEffect(() => {
     fetchAllRecords();
-  }, []);
+  }, [filterLevel, selectedZone, selectedArea]);
 
   useEffect(() => {
     applyFilters();
@@ -80,10 +90,15 @@ export default function BizConnectAnalytics() {
     try {
       const { startDate, endDate } = getDateRange(dateFilter);
 
-      const response = await api.post("/meetup/detailed-by-date", {
+      const payload: any = {
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
-      });
+      };
+
+      if (filterLevel === "zone" && selectedZone) payload.zoneId = selectedZone._id;
+      if (filterLevel === "area" && selectedArea) payload.areaId = selectedArea._id;
+
+      const response = await api.post("/meetups/detailed-by-date", payload);
 
       if (response.data.success) {
         const data = response.data.data.meetups || [];
@@ -155,7 +170,7 @@ export default function BizConnectAnalytics() {
     if (!window.confirm("Are you sure you want to delete this meetup?")) return;
 
     try {
-      const response = await api.delete(`/meetup/${id}`);
+      const response = await api.delete(`/meetups/${id}`);
       if (response.data.success) {
         toast.success("Meetup deleted successfully");
         fetchAllRecords();
@@ -175,7 +190,7 @@ export default function BizConnectAnalytics() {
 
     setBulkDeleting(true);
     try {
-      await Promise.all(selectedIds.map((id) => api.delete(`/meetup/${id}`)));
+      await Promise.all(selectedIds.map((id) => api.delete(`/meetups/${id}`)));
       toast.success(`${selectedIds.length} meetup(s) deleted successfully`);
       setSelectedIds([]);
       fetchAllRecords();

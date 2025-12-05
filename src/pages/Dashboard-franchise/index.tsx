@@ -43,12 +43,13 @@ import ChartsView from "./ChartsView";
 import { useVisibility } from "../../context/VisibilityContext";
 
 // Role-based dashboard types
-type DashboardRole = "master-franchise" | "area-franchise";
+type DashboardRole = "admin" | "master-franchise" | "area-franchise";
 
 // Helper function to determine dashboard role
 const getDashboardRole = (user: any): DashboardRole | null => {
   if (!user || !user.role) return null;
 
+  if (user.role === "admin") return "admin";
   if (user.role === "master-franchise") return "master-franchise";
   if (user.role === "area-franchise") return "area-franchise";
 
@@ -155,15 +156,17 @@ const DashboardFranchise: React.FC = () => {
   const navigate = useNavigate();
   const user = getUserFromLocalStorage();
   const { setSidebarAndHeaderVisibility } = useVisibility();
-  const [tabValue, setTabValue] = useState(0);
-  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("monthly");
-  const [membershipFilter, setMembershipFilter] = useState<"total" | "offline" | "digital">("total");
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   // Detect user role
   const dashboardRole = getDashboardRole(user);
+  const isAdmin = user?.role === "admin";
+
+  const [tabValue, setTabValue] = useState(0);
+  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly" | "all-time">(isAdmin || dashboardRole === "master-franchise" ? "all-time" : "monthly");
+  const [membershipFilter, setMembershipFilter] = useState<"total" | "offline" | "digital">("total");
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [zones, setZones] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Ensure sidebar and header are visible
   useEffect(() => {
@@ -179,32 +182,76 @@ const DashboardFranchise: React.FC = () => {
 
         // Validate role
         if (!dashboardRole) {
-          setError("Invalid user role. Only Master Franchise and Area Franchise partners can access this dashboard.");
+          setError("Invalid user role. Only Admin, Master Franchise and Area Franchise partners can access this dashboard.");
           setLoading(false);
           return;
         }
 
-        // Determine endpoint based on role
-        const endpoint =
-          dashboardRole === "master-franchise"
-            ? "/franchise/mf/dashboard"
-            : "/franchise/af/dashboard";
+        // For admin, fetch all zones AND global metrics
+        if (isAdmin) {
+          const [zonesResponse, metricsResponse] = await Promise.all([
+            axiosInstance.get("/zones"),
+            axiosInstance.get("/franchise/admin/global-metrics", {
+              params: { period }
+            })
+          ]);
 
-        console.log(`Fetching dashboard data from ${endpoint} for role: ${dashboardRole}`);
+          console.log("Admin zones response:", zonesResponse.data);
+          console.log("Admin metrics response:", metricsResponse.data);
 
-        const response = await axiosInstance.get(endpoint, {
-          params: {
-            period,
-            membershipFilter,
-          },
-        });
+          if (zonesResponse.data.success) {
+            setZones(zonesResponse.data.data.zones || []);
+          }
 
-        console.log("Dashboard API response:", response.data);
-
-        if (response.data.success) {
-          setDashboardData(response.data.data);
+          if (metricsResponse.data.success) {
+            // Map global metrics to dashboard data structure
+            const globalMetrics = metricsResponse.data.data.metrics;
+            setDashboardData({
+              zone: { id: "", name: "Global", city: "", state: "", country: "", status: "" },
+              masterFranchise: { _id: "", fname: "", email: "", phone: "", businessCategory: "" },
+              summary: { totalAreas: 0, activeAreas: 0, totalMembers: globalMetrics.userCount, offlineMembers: 0, digitalMembers: 0 },
+              metrics: {
+                period,
+                membershipFilter: "total",
+                startDate: new Date(),
+                endDate: new Date(),
+                zoneWide: {
+                  totalMeetups: globalMetrics.meetups.total,
+                  totalBizConnect: globalMetrics.bizConnect.total,
+                  totalBizWinAmount: globalMetrics.bizWin.totalAmount,
+                  totalVisitorInvitations: globalMetrics.visitorInvitations.total,
+                  totalEvents: 0, // Not currently in global metrics response, defaulting to 0
+                  avgPerformanceScore: 0,
+                  userCount: globalMetrics.userCount
+                }
+              },
+              areaFranchises: [],
+              topPerformers: []
+            });
+          }
         } else {
-          setError("Failed to fetch dashboard data");
+          // Determine endpoint based on role
+          const endpoint =
+            dashboardRole === "master-franchise"
+              ? "/franchise/mf/dashboard"
+              : "/franchise/af/dashboard";
+
+          console.log(`Fetching dashboard data from ${endpoint} for role: ${dashboardRole}`);
+
+          const response = await axiosInstance.get(endpoint, {
+            params: {
+              period,
+              membershipFilter,
+            },
+          });
+
+          console.log("Dashboard API response:", response.data);
+
+          if (response.data.success) {
+            setDashboardData(response.data.data);
+          } else {
+            setError("Failed to fetch dashboard data");
+          }
         }
       } catch (err: any) {
         console.error("Dashboard fetch error:", err);
@@ -215,7 +262,7 @@ const DashboardFranchise: React.FC = () => {
     };
 
     fetchDashboardData();
-  }, [period, membershipFilter, dashboardRole]);
+  }, [period, membershipFilter, dashboardRole, isAdmin]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
@@ -250,6 +297,187 @@ const DashboardFranchise: React.FC = () => {
   }
 
 
+
+  // Admin view - show all zones
+  if (isAdmin) {
+    return (
+      <Box sx={{ p: 3 }}>
+        {/* Welcome Section */}
+        <Box mb={4} display="flex" justifyContent="space-between" alignItems="center">
+          <Box>
+            <Typography variant="h4" gutterBottom>
+              Welcome, {user?.fname} {user?.lname}
+            </Typography>
+            <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+              Franchise Management Dashboard - All Zones
+            </Typography>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Total Zones: {zones.length}
+            </Typography>
+          </Box>
+
+          {/* Filter Controls for Global Stats */}
+          <Box display="flex" gap={2}>
+            <FormControl size="small" sx={{ minWidth: 150 }}>
+              <InputLabel>Period</InputLabel>
+              <Select value={period} label="Period" onChange={(e) => setPeriod(e.target.value as any)}>
+                <MenuItem value="daily">Daily</MenuItem>
+                <MenuItem value="weekly">Weekly</MenuItem>
+                <MenuItem value="monthly">Monthly</MenuItem>
+                <MenuItem value="all-time">All Time</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+        </Box>
+
+        {/* Global Stats Cards */}
+        {dashboardData?.metrics?.zoneWide && (
+          <Box
+            sx={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 3,
+              mb: 4,
+              justifyContent: "space-between",
+            }}
+          >
+            {[
+              {
+                title: "M.U. (Meetups)",
+                value: dashboardData.metrics.zoneWide.totalMeetups,
+                icon: <Groups fontSize="large" />,
+                gradient: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                subtext: `${period === 'all-time' ? 'All Time' : period.charAt(0).toUpperCase() + period.slice(1)} Total`
+              },
+              {
+                title: "B.C. (BizConnect)",
+                value: dashboardData.metrics.zoneWide.totalBizConnect,
+                icon: <Handshake fontSize="large" />,
+                gradient: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+                subtext: `${period === 'all-time' ? 'All Time' : period.charAt(0).toUpperCase() + period.slice(1)} Total`
+              },
+              {
+                title: "B.W. (BizWin)",
+                value: formatCurrency(dashboardData.metrics.zoneWide.totalBizWinAmount),
+                icon: <EmojiEvents fontSize="large" />,
+                gradient: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+                subtext: `${period === 'all-time' ? 'All Time' : period.charAt(0).toUpperCase() + period.slice(1)} Total`
+              },
+              {
+                title: "VISITOR (Invitations)",
+                value: dashboardData.metrics.zoneWide.totalVisitorInvitations,
+                icon: <Visibility fontSize="large" />,
+                gradient: "linear-gradient(135deg, #fa709a 0%, #fee140 100%)",
+                subtext: `${period === 'all-time' ? 'All Time' : period.charAt(0).toUpperCase() + period.slice(1)} Total`
+              },
+              {
+                title: "Total Members",
+                value: dashboardData.metrics.zoneWide.userCount,
+                icon: <Groups fontSize="large" />,
+                gradient: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)",
+                subtext: "Platform Wide"
+              }
+            ].map((item, index) => (
+              <Card
+                key={index}
+                sx={{
+                  flex: "1 1 200px",
+                  minHeight: 160,
+                  background: item.gradient,
+                  color: "white",
+                  borderRadius: 3,
+                  boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
+                  transition: "transform 0.2s",
+                  "&:hover": {
+                    transform: "translateY(-4px)",
+                    boxShadow: "0 8px 25px rgba(0,0,0,0.15)",
+                  },
+                }}
+              >
+                <CardContent sx={{ height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", p: 2.5 }}>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Box sx={{ opacity: 0.9 }}>{item.icon}</Box>
+                    <Chip
+                      label={item.subtext}
+                      size="small"
+                      sx={{
+                        backgroundColor: "rgba(255,255,255,0.25)",
+                        color: "white",
+                        fontSize: "0.65rem",
+                        height: 22,
+                        fontWeight: 500
+                      }}
+                    />
+                  </Box>
+                  <Box mt={2}>
+                    <Typography variant="h4" fontWeight="700" sx={{ textShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+                      {item.value}
+                    </Typography>
+                    <Typography variant="body2" fontWeight="500" sx={{ opacity: 0.9, mt: 0.5 }}>
+                      {item.title}
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            ))}
+          </Box>
+        )}
+
+        {/* Zones List */}
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell><strong>Zone Name</strong></TableCell>
+                <TableCell><strong>Zone Code</strong></TableCell>
+                <TableCell><strong>City</strong></TableCell>
+                <TableCell><strong>State</strong></TableCell>
+                <TableCell><strong>Country</strong></TableCell>
+                <TableCell><strong>Master Franchise</strong></TableCell>
+                <TableCell align="center"><strong>Actions</strong></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {zones.map((zone) => (
+                <TableRow key={zone._id} hover>
+                  <TableCell><strong>{zone.zoneName}</strong></TableCell>
+                  <TableCell>{zone.zoneCode}</TableCell>
+                  <TableCell>{zone.cityId || "N/A"}</TableCell>
+                  <TableCell>{zone.stateId || "N/A"}</TableCell>
+                  <TableCell>{zone.countryId || "N/A"}</TableCell>
+                  <TableCell>
+                    {zone.assignedMFId ? (
+                      <Box display="flex" alignItems="center" gap={1}>
+                        <Avatar sx={{ width: 32, height: 32 }}>
+                          {zone.assignedMFId.fname?.[0] || "M"}
+                        </Avatar>
+                        {zone.assignedMFId.fname} {zone.assignedMFId.lname}
+                      </Box>
+                    ) : (
+                      <Chip label="Not Assigned" color="warning" size="small" />
+                    )}
+                  </TableCell>
+                  <TableCell align="center">
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => navigate(`/dashboard-franchise/zone/${zone._id}`)}
+                    >
+                      View Details
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+
+        {zones.length === 0 && (
+          <Alert severity="info" sx={{ mt: 2 }}>No zones found</Alert>
+        )}
+      </Box>
+    );
+  }
 
   // No data state
   if (!dashboardData) {
@@ -306,6 +534,7 @@ const DashboardFranchise: React.FC = () => {
               <MenuItem value="daily">Daily</MenuItem>
               <MenuItem value="weekly">Weekly</MenuItem>
               <MenuItem value="monthly">Monthly</MenuItem>
+              <MenuItem value="all-time">All Time</MenuItem>
             </Select>
           </FormControl>
 

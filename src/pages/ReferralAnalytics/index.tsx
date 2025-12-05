@@ -68,9 +68,17 @@ type DateFilterType = "15days" | "30days" | "90days" | "tilldate";
 
 interface ReferralAnalyticsProps {
   businessArea?: string; // The business area name (e.g., "Jawahar Nagar")
+  filterLevel?: "platform" | "country" | "state" | "zone" | "area";
+  selectedZone?: { _id: string; zoneName: string } | null;
+  selectedArea?: { _id: string; areaName: string } | null;
 }
 
-export default function ReferralAnalytics({ businessArea }: ReferralAnalyticsProps) {
+export default function ReferralAnalytics({
+  businessArea,
+  filterLevel = "platform",
+  selectedZone = null,
+  selectedArea = null,
+}: ReferralAnalyticsProps = {}) {
   const [records, setRecords] = useState<InviteSlip[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<InviteSlip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,7 +105,7 @@ export default function ReferralAnalytics({ businessArea }: ReferralAnalyticsPro
 
   useEffect(() => {
     fetchAllRecords();
-  }, []);
+  }, [filterLevel, selectedZone, selectedArea]);
 
   useEffect(() => {
     applyFilters();
@@ -107,9 +115,11 @@ export default function ReferralAnalytics({ businessArea }: ReferralAnalyticsPro
   const fetchAllRecords = async () => {
     setLoading(true);
     try {
-      const response = await api.get("/referrals", {
-        params: { businessArea }, // Filter by businessArea instead of areaId
-      });
+      const params: any = { businessArea };
+      if (filterLevel === "zone" && selectedZone) params.zoneId = selectedZone._id;
+      if (filterLevel === "area" && selectedArea) params.areaId = selectedArea._id;
+
+      const response = await api.get("/referrals", { params });
 
       if (response.data.success) {
         const data = response.data.data || [];

@@ -141,7 +141,7 @@ const SidebarContent = ({
     {
       text: "Comprehensive Stats",
       icon: <BarChartIcon />,
-      link: "/comprehensive-dashboard",
+      link: "/dashboard-franchise",
       roles: ["admin"],
     },
     {

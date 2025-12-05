@@ -453,15 +453,6 @@ const ZoneDetails: React.FC = () => {
             )
         },
         {
-            key: 'status',
-            label: 'Status',
-            render: (area: Area) => (
-                <Badge variant={area.status === 'active' ? 'success' : 'default'}>
-                    {area.status ? area.status.toUpperCase() : 'ACTIVE'}
-                </Badge>
-            )
-        },
-        {
             key: 'actions',
             label: 'Actions',
             render: (area: Area) => (
@@ -548,10 +539,10 @@ const ZoneDetails: React.FC = () => {
                         <p className="text-lg font-semibold">{zone.countryId}</p>
                     </div>
                     <div>
-                        <label className="text-sm font-medium text-gray-600">Status</label>
+                        <label className="text-sm font-medium text-gray-600">Zone Partner</label>
                         <div className="mt-1">
-                            <Badge variant={zone.status === 'active' ? 'success' : 'warning'}>
-                                {zone.status.toUpperCase()}
+                            <Badge variant={zone.assignedMFId ? 'success' : 'warning'}>
+                                {zone.assignedMFId ? 'ASSIGNED' : 'NOT ASSIGNED'}
                             </Badge>
                         </div>
                     </div>
