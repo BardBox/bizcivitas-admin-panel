@@ -444,7 +444,7 @@ const ZoneDetails: React.FC = () => {
             render: (area: Area) => (
                 area.areaFranchise ? (
                     <div className="text-sm">
-                        <div className="font-medium">{area.areaFranchise.name}</div>
+                        <div className="font-medium">{area.areaFranchise.fname} {area.areaFranchise.lname}</div>
                         <div className="text-gray-500">{area.areaFranchise.email}</div>
                     </div>
                 ) : (
@@ -555,7 +555,7 @@ const ZoneDetails: React.FC = () => {
                             <div className="md:col-span-2">
                                 <label className="text-sm font-medium text-gray-600">Master Franchise</label>
                                 <div className="mt-1">
-                                    <p className="font-semibold">{zone.assignedMFId.name}</p>
+                                    <p className="font-semibold">{zone.assignedMFId.fname} {zone.assignedMFId.lname}</p>
                                     <p className="text-sm text-gray-500">{zone.assignedMFId.email}</p>
                                     {zone.assignedMFId.phoneNumber && (
                                         <p className="text-sm text-gray-500">{zone.assignedMFId.phoneNumber}</p>
@@ -601,8 +601,8 @@ const ZoneDetails: React.FC = () => {
                             <div>State: {zone.stateId}</div>
                             <div>Country: {zone.countryId}</div>
                             {zone.assignedMFId && (
-                                <div className="col-span-2 truncate" title={zone.assignedMFId.name}>
-                                    MF: {zone.assignedMFId.name}
+                                <div className="col-span-2 truncate" title={`${zone.assignedMFId.fname} ${zone.assignedMFId.lname}`}>
+                                    MF: {zone.assignedMFId.fname} {zone.assignedMFId.lname}
                                 </div>
                             )}
                         </div>

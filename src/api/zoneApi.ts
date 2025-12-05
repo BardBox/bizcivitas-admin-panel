@@ -9,7 +9,8 @@ export interface Zone {
   zoneName: string;
   assignedMFId?: {
     _id: string;
-    name: string;
+    fname: string;
+    lname?: string;
     email: string;
     phoneNumber?: string;
   };

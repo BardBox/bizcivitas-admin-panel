@@ -29,11 +29,13 @@ import {
   EmojiEvents,
   Visibility,
   People,
+  Download,
 } from "@mui/icons-material";
 import { getUserFromLocalStorage } from "../../api/auth";
 import { useParams, useNavigate } from "react-router-dom";
 import { useVisibility } from "../../context/VisibilityContext";
 import axiosInstance from "../../axiosInstance";
+import { generateZoneDetailedExcel } from "../../utils/excelReportGenerator";
 
 interface ZoneMetrics {
   bizWinTransactions: {
@@ -206,6 +208,20 @@ const DashboardZone: React.FC = () => {
     }).format(amount);
   };
 
+  const handleDownloadReport = async () => {
+    if (!zoneData) return;
+
+    try {
+      await generateZoneDetailedExcel(
+        zoneData._id,
+        zoneData.zoneName,
+        dateRange.startDate && dateRange.endDate ? dateRange : undefined
+      );
+    } catch (error) {
+      console.error("Download failed:", error);
+    }
+  };
+
   if (loading) {
     return (
       <Box
@@ -259,7 +275,15 @@ const DashboardZone: React.FC = () => {
       </Box>
 
       {/* Date Filter */}
-      <Box display="flex" justifyContent="flex-end" mb={3}>
+      <Box display="flex" justifyContent="flex-end" mb={3} gap={2}>
+        <Button
+          variant="contained"
+          startIcon={<Download />}
+          onClick={handleDownloadReport}
+          sx={{ height: 40 }}
+        >
+          Download Report
+        </Button>
         <Stack direction="row" spacing={2} alignItems="center">
           <TextField
             label="Start Date"
@@ -496,7 +520,12 @@ const DashboardZone: React.FC = () => {
                 </TableHead>
                 <TableBody>
                   {zoneData.areas.map((area) => (
-                    <TableRow key={area._id} hover>
+                    <TableRow
+                      key={area._id}
+                      hover
+                      onClick={() => handleAreaClick(area._id)}
+                      sx={{ cursor: "pointer" }}
+                    >
                       <TableCell>{area.areaName}</TableCell>
                       <TableCell>{area.areaCode}</TableCell>
                       <TableCell>
@@ -517,7 +546,10 @@ const DashboardZone: React.FC = () => {
                         <Button
                           variant="outlined"
                           size="small"
-                          onClick={() => handleAreaClick(area._id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAreaClick(area._id);
+                          }}
                         >
                           View Details
                         </Button>

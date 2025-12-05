@@ -13,7 +13,8 @@ export interface Area {
   };
   areaFranchise?: {
     _id: string;
-    name: string;
+    fname: string;
+    lname?: string;
     email: string;
     phoneNumber?: string;
     businessCategory?: string;

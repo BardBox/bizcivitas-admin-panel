@@ -651,3 +651,221 @@ export const generateAreaMetricsReport = (
   // Write file with styles
   XLSX.writeFile(workbook, filename);
 };
+
+/**
+ * Generate detailed zone report with separate sheets for each user
+ */
+export const generateZoneDetailedExcel = async (
+  zoneId: string,
+  zoneName: string,
+  dateRange?: { startDate: string; endDate: string }
+) => {
+  const workbook = XLSX.utils.book_new();
+  const filename = `${zoneName}_Detailed_Report.xlsx`;
+
+  try {
+    const response = await axiosInstance.get('/franchise/mf/zone-detailed-report', {
+      params: {
+        zoneId,
+        ...dateRange
+      }
+    });
+
+    const reportData = response.data.data;
+
+    if (!reportData || reportData.length === 0) {
+      alert("No data found for this zone.");
+      return;
+    }
+
+    // Create a Summary Sheet first
+    const summaryRows = [
+      [`Detailed Report for ${zoneName}`],
+      [""],
+      ["User Name", "Email", "Membership", "BizWin Given", "BizWin Received", "BizConnect Given", "BizConnect Received", "Meetups"]
+    ];
+
+    reportData.forEach((item: any) => {
+      const { user, stats } = item;
+
+      // Calculate totals for summary
+      const bizWinGivenTotal = stats.bizWin.given.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+      const bizWinReceivedTotal = stats.bizWin.received.reduce((sum: number, r: any) => sum + (r.amount || 0), 0);
+      const bizConnectGivenCount = stats.bizConnect.given.length;
+      const bizConnectReceivedCount = stats.bizConnect.received.length;
+      const meetupsCount = stats.meetups.created.length + stats.meetups.attended.length;
+
+      summaryRows.push([
+        `${user.fname} ${user.lname}`,
+        user.email,
+        user.membershipType || "N/A",
+        bizWinGivenTotal.toLocaleString(),
+        bizWinReceivedTotal.toLocaleString(),
+        bizConnectGivenCount,
+        bizConnectReceivedCount,
+        meetupsCount
+      ]);
+    });
+
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+
+    // Style Summary Sheet
+    summarySheet['A1'].s = {
+      fill: { fgColor: { rgb: 'FF2E4053' } },
+      font: { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 16 },
+      alignment: { horizontal: 'center', vertical: 'center' }
+    };
+
+    // Header row style
+    ['A3', 'B3', 'C3', 'D3', 'E3', 'F3', 'G3', 'H3'].forEach(cellRef => {
+      if (summarySheet[cellRef]) {
+        summarySheet[cellRef].s = {
+          fill: { fgColor: { rgb: 'FF17A2B8' } },
+          font: { bold: true, color: { rgb: 'FFFFFFFF' }, sz: 11 },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        };
+      }
+    });
+
+    // Column widths
+    summarySheet['!cols'] = [
+      { wch: 25 }, { wch: 30 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 10 }
+    ];
+
+    summarySheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 7 } }];
+
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Zone Summary");
+
+    // Create Individual User Sheets
+    reportData.forEach((item: any) => {
+      const { user, stats } = item;
+      const userName = `${user.fname} ${user.lname}`;
+      // Sheet names must be unique and < 31 chars. 
+      // We'll use First Name + partial Last Name + partial ID if needed, but for now simple truncation
+      let sheetName = userName.slice(0, 30);
+
+      // Ensure unique sheet name (simple check, though collisions rare with small zones)
+      let counter = 1;
+      while (workbook.Sheets[sheetName]) {
+        sheetName = userName.slice(0, 28) + `_${counter}`;
+        counter++;
+      }
+
+      const detailRows: any[] = [
+        [`Detailed Report - ${userName}`],
+        [`Email: ${user.email} | Membership: ${user.membershipType || 'N/A'}`],
+        [""],
+        ["Category", "Type", "Date", "With Whom", "Referral Name", "Contact", "Amount", "Status/Notes"]
+      ];
+
+      let currentRow = 4;
+
+      // Helper to add section
+      const addSection = (title: string, data: any[], type: string, category: string) => {
+        if (data.length > 0) {
+          currentRow++;
+          detailRows.push(["", "", "", "", "", "", "", ""]);
+          currentRow++;
+          detailRows.push([`=== ${title} ===`, "", "", "", "", "", "", ""]);
+
+          data.forEach((txn: any) => {
+            currentRow++;
+            let rowData: any[] = [];
+
+            if (category === "BizWin") {
+              rowData = [
+                category,
+                type,
+                new Date(txn.createdAt).toLocaleDateString(),
+                type === "Given"
+                  ? `${txn.to?.fname || ''} ${txn.to?.lname || ''}`
+                  : `${txn.from?.fname || ''} ${txn.from?.lname || ''}`,
+                "-",
+                "-",
+                txn.amount?.toLocaleString() || 0,
+                txn.comments || "-"
+              ];
+            } else if (category === "BizConnect") {
+              rowData = [
+                category,
+                type,
+                new Date(txn.createdAt).toLocaleDateString(),
+                type === "Given"
+                  ? `${txn.to?.fname || ''} ${txn.to?.lname || ''}`
+                  : `${txn.from?.fname || ''} ${txn.from?.lname || ''}`,
+                txn.referral || "N/A",
+                txn.telephone || "N/A",
+                "-",
+                txn.status || "N/A"
+              ];
+            } else if (category === "Meetup") {
+              rowData = [
+                category,
+                type,
+                new Date(txn.date).toLocaleDateString(),
+                txn.title,
+                "-",
+                "-",
+                "-",
+                "-"
+              ];
+            } else if (category === "Visitor") {
+              rowData = [
+                category,
+                type,
+                new Date(txn.createdAt).toLocaleDateString(),
+                txn.name,
+                "-",
+                txn.mobile || "N/A",
+                "-",
+                `${txn.email || 'N/A'} | ${txn.status || "Pending"}`
+              ];
+            } else if (category === "Member") {
+              rowData = [
+                category,
+                type,
+                new Date(txn.createdAt).toLocaleDateString(),
+                `${txn.fname} ${txn.lname}`,
+                "-",
+                "-",
+                "-",
+                `${txn.email} | ${txn.membershipType}`
+              ];
+            }
+
+            detailRows.push(rowData);
+          });
+        }
+      };
+
+      addSection("BIZWIN GIVEN", stats.bizWin.given, "Given", "BizWin");
+      addSection("BIZWIN RECEIVED", stats.bizWin.received, "Received", "BizWin");
+      addSection("BIZCONNECT GIVEN", stats.bizConnect.given, "Given", "BizConnect");
+      addSection("BIZCONNECT RECEIVED", stats.bizConnect.received, "Received", "BizConnect");
+      addSection("MEETUPS CREATED", stats.meetups.created, "Created", "Meetup");
+      addSection("MEETUPS ATTENDED", stats.meetups.attended, "Attended", "Meetup");
+      addSection("VISITOR INVITATIONS", stats.visitorInvitations, "Invitation", "Visitor");
+      addSection("MEMBER REFERRALS", stats.memberReferrals, "Referral", "Member");
+
+      const detailSheet = XLSX.utils.aoa_to_sheet(detailRows);
+
+      // Apply basic styling (simplified for brevity, can copy full styling if needed)
+      detailSheet['A1'].s = { font: { bold: true, sz: 14 } };
+      detailSheet['!cols'] = [
+        { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 22 }, { wch: 17 }, { wch: 17 }, { wch: 35 }
+      ];
+      detailSheet['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, detailSheet, sheetName);
+    });
+
+    XLSX.writeFile(workbook, filename);
+
+  } catch (err) {
+    console.error("Error generating zone detailed report:", err);
+    alert("Failed to generate report. Please try again.");
+  }
+};

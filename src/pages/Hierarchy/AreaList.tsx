@@ -28,6 +28,7 @@ const AreaList: React.FC = () => {
     // Step 2: Partner assignment modal
     const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
     const [newlyCreatedAreaId, setNewlyCreatedAreaId] = useState<string | null>(null);
+    const [step2Zone, setStep2Zone] = useState<any>(null);
     const [partnerAssignmentMode, setPartnerAssignmentMode] = useState<'select' | 'create'>('select');
     const [step2SelectedPartner, setStep2SelectedPartner] = useState<any>(null);
 
@@ -57,21 +58,24 @@ const AreaList: React.FC = () => {
         queryFn: () => getAllZones(),
     });
 
+    // Determine active zone ID for fetching partners
+    const activeZoneId = isPartnerModalOpen ? step2Zone?.value : selectedZone?.value;
+
     // Fetch available Area Franchise users for the selected zone
     const { data: availableAreaFranchises = [] } = useQuery({
-        queryKey: ['area-franchises-available', selectedZone?.value],
+        queryKey: ['area-franchises-available', activeZoneId],
         queryFn: async () => {
-            if (!selectedZone?.value) return [];
+            if (!activeZoneId) return [];
             const allAreaFranchises = await getUsersByRole('area-franchise');
 
             // Filter to get unassigned area franchises for this zone
             return allAreaFranchises.filter((af: FranchiseUser) => {
                 const hasNoArea = !af.areaId;
-                const belongsToZone = af.zoneId === selectedZone.value;
+                const belongsToZone = af.zoneId === activeZoneId;
                 return hasNoArea && belongsToZone;
             });
         },
-        enabled: !!selectedZone?.value,
+        enabled: !!activeZoneId,
     });
 
     // Fetch API areas when zone is selected
@@ -238,6 +242,7 @@ const AreaList: React.FC = () => {
 
             // Open Step 2 modal for partner assignment
             setNewlyCreatedAreaId(createdArea._id);
+            setStep2Zone(selectedZone); // Save zone for step 2
             setIsPartnerModalOpen(true);
 
             // Reset Step 1 form
@@ -254,7 +259,7 @@ const AreaList: React.FC = () => {
         onSuccess: async (newPartner: FranchiseUser) => {
             // Partner is already assigned via areaId in the creation payload
             queryClient.invalidateQueries({ queryKey: ['areas'] });
-            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', selectedZone?.value] });
+            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', activeZoneId] });
             toast.success(`Area Franchise partner "${newPartner.fname}" created and assigned successfully!`);
             closePartnerModal();
         },
@@ -268,7 +273,7 @@ const AreaList: React.FC = () => {
         mutationFn: (partnerId: string) => assignAreaFranchise(newlyCreatedAreaId!, partnerId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['areas'] });
-            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', selectedZone?.value] });
+            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', activeZoneId] });
             toast.success('Area Franchise partner assigned successfully!');
             closePartnerModal();
         },
@@ -387,6 +392,7 @@ const AreaList: React.FC = () => {
     const closePartnerModal = () => {
         setIsPartnerModalOpen(false);
         setNewlyCreatedAreaId(null);
+        setStep2Zone(null); // Clear step 2 zone
         setPartnerAssignmentMode('select');
         resetPartnerForm();
     };
@@ -408,7 +414,10 @@ const AreaList: React.FC = () => {
                 return;
             }
 
-            if (!selectedZone) {
+            // Use step2Zone if available, otherwise fallback to selectedZone (though selectedZone might be null)
+            const zoneForAssignment = step2Zone || selectedZone;
+
+            if (!zoneForAssignment) {
                 toast.error('Zone information missing');
                 return;
             }
@@ -420,11 +429,11 @@ const AreaList: React.FC = () => {
                 mobile: newPartnerMobile,
                 password: newPartnerPassword,
                 role: 'area-franchise',
-                zoneId: selectedZone.value, // Assign to current zone
+                zoneId: zoneForAssignment.value, // Assign to current zone
                 areaId: newlyCreatedAreaId!, // Assign to newly created area
-                city: selectedZone.zone.cityId,
-                state: selectedZone.zone.stateId,
-                country: selectedZone.zone.countryId,
+                city: zoneForAssignment.zone.cityId,
+                state: zoneForAssignment.zone.stateId,
+                country: zoneForAssignment.zone.countryId,
             };
 
             createPartnerMutation.mutate(newPartnerData);
@@ -485,7 +494,7 @@ const AreaList: React.FC = () => {
             render: (area: Area) => (
                 area.areaFranchise ? (
                     <div className="text-sm">
-                        <div className="font-medium">{area.areaFranchise.name}</div>
+                        <div className="font-medium">{area.areaFranchise.fname} {area.areaFranchise.lname}</div>
                         <div className="text-gray-500">{area.areaFranchise.email}</div>
                     </div>
                 ) : (
