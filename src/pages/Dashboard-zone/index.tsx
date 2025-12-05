@@ -82,6 +82,7 @@ interface ZoneData {
     areaFranchise?: {
       fname: string;
       lname: string;
+      email: string;
     };
   }>;
 }
@@ -500,12 +501,7 @@ const DashboardZone: React.FC = () => {
                       <TableCell>{area.areaCode}</TableCell>
                       <TableCell>
                         {area.areaFranchise ? (
-                          <Box display="flex" alignItems="center" gap={1}>
-                            <Avatar sx={{ width: 32, height: 32 }}>
-                              {area.areaFranchise.fname?.[0] || "A"}
-                            </Avatar>
-                            {area.areaFranchise.fname} {area.areaFranchise.lname}
-                          </Box>
+                          <Typography variant="body2">{area.areaFranchise.email}</Typography>
                         ) : (
                           <Chip label="Not Assigned" color="warning" size="small" />
                         )}

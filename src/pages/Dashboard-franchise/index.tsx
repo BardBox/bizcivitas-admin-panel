@@ -439,7 +439,12 @@ const DashboardFranchise: React.FC = () => {
             </TableHead>
             <TableBody>
               {zones.map((zone) => (
-                <TableRow key={zone._id} hover>
+                <TableRow
+                  key={zone._id}
+                  hover
+                  onClick={() => navigate(`/dashboard-franchise/zone/${zone._id}`)}
+                  sx={{ cursor: "pointer" }}
+                >
                   <TableCell><strong>{zone.zoneName}</strong></TableCell>
                   <TableCell>{zone.zoneCode}</TableCell>
                   <TableCell>{zone.cityId || "N/A"}</TableCell>
@@ -461,7 +466,10 @@ const DashboardFranchise: React.FC = () => {
                     <Button
                       variant="outlined"
                       size="small"
-                      onClick={() => navigate(`/dashboard-franchise/zone/${zone._id}`)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/dashboard-franchise/zone/${zone._id}`);
+                      }}
                     >
                       View Details
                     </Button>
