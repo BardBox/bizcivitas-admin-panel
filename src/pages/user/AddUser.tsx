@@ -9,16 +9,7 @@ import api from "../../api/api";
 // TYPES & INTERFACES
 // =====================================
 
-interface CoreMember {
-  _id: string;
-  fname: string;
-  lname: string;
-}
-
-interface Region {
-  _id: string;
-  regionName: string;
-}
+import { Country, State, City } from "country-state-city";
 
 interface UserFormData {
   fname: string;
@@ -28,9 +19,11 @@ interface UserFormData {
   membershipType: string;
   role: string;
   region?: string;
-  city?: string;
-  state?: string;
   country?: string;
+  state?: string;
+  city?: string;
+  area?: string;
+  pincode?: string;
   referBy?: string;
   username?: string;
 }
@@ -39,18 +32,17 @@ interface UserFormData {
 // CONSTANTS
 // =====================================
 
-// ✅ UPDATED RBAC ROLES - Matches backend constants
+// ✅ USER ROLES ONLY - Franchise roles have separate creation forms
+// ✅ USER ROLES ONLY - Franchise roles have separate creation forms
 const roles = [
   "user",                    // Default role for all registered users
   "digital-member",          // Digital-only participants
   "core-member",             // Non-leader group members
   "pioneer",                 // Special recognition role (optional)
-  "dcp",                     // Digital Channel Partner (manages digital members)
-  "cgc",                     // Core Group Council (group leaders, can create groups)
-  "area-franchise",          // Area Partner (manages areas)
-  "master-franchise",        // City-level franchise (manages city)
-  "admin"              // Full system access
+  "admin"                    // Full system access
 ];
+
+// Note: dcp, cgc, area-franchise, master-franchise are created via separate franchise forms
 
 const membershipTypes = [
   "Core Membership",
@@ -100,21 +92,17 @@ const createValidationSchema = (membershipType: string) => {
       .required("Role is required")
       .oneOf(roles, "Invalid role"),
 
+    // Location Fields (Required for all)
+    country: yup.string().required("Country is required"),
+    state: yup.string().required("State is required"),
+    city: yup.string().required("City is required"),
+    area: yup.string().optional(),
+    pincode: yup.string().matches(/^[0-9]{6}$/, "Pincode must be 6 digits").optional(),
+
+    // Region (Required for non-digital)
     region: isDigitalMembership
       ? yup.string().optional()
       : yup.string().required("Region is required for this membership type"),
-
-    city: isDigitalMembership
-      ? yup.string().required("City is required for Digital Membership")
-      : yup.string().optional(),
-
-    state: isDigitalMembership
-      ? yup.string().required("State is required for Digital Membership")
-      : yup.string().optional(),
-
-    country: isDigitalMembership
-      ? yup.string().required("Country is required for Digital Membership")
-      : yup.string().optional(),
 
     referBy: yup.string().optional(),
 
@@ -130,9 +118,15 @@ const createValidationSchema = (membershipType: string) => {
 
 const AddUserPage: React.FC = () => {
   const navigate = useNavigate();
-  const [coreMembers, setCoreMembers] = useState<CoreMember[]>([]);
-  const [regions, setRegions] = useState<Region[]>([]);
+
   const [loading, setLoading] = useState<boolean>(true);
+
+  // Location State
+  const [countries, setCountries] = useState<any[]>([]);
+  const [states, setStates] = useState<any[]>([]);
+  const [cities, setCities] = useState<any[]>([]);
+
+
 
   // =====================================
   // FORM SETUP
@@ -154,9 +148,11 @@ const AddUserPage: React.FC = () => {
       membershipType: "",
       role: "",
       region: "",
-      city: "",
-      state: "",
       country: "",
+      state: "",
+      city: "",
+      area: "",
+      pincode: "",
       referBy: "",
       username: "",
     },
@@ -168,6 +164,15 @@ const AddUserPage: React.FC = () => {
     membershipType === "Digital Membership" ||
     membershipType === "Digital Membership Trial";
 
+  // Watch location fields for cascading dropdowns
+  const selectedCountry = watch("country");
+  const selectedState = watch("state");
+
+
+  // =====================================
+  // EFFECTS
+  // =====================================
+
   // =====================================
   // EFFECTS
   // =====================================
@@ -175,18 +180,10 @@ const AddUserPage: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [coreMembersResponse, regionsResponse] = await Promise.all([
-          api.get("/core-members/"),
-          api.get("/regions/getallregions/"),
-        ]);
+        // Load Countries from library
+        setCountries(Country.getAllCountries());
 
-        if (coreMembersResponse.data.success) {
-          setCoreMembers(coreMembersResponse.data.data);
-        }
 
-        if (regionsResponse.data.success) {
-          setRegions(regionsResponse.data.data);
-        }
       } catch (error: any) {
         const errorMessage =
           error.response?.data?.message || "Failed to fetch data!";
@@ -201,6 +198,26 @@ const AddUserPage: React.FC = () => {
 
     fetchData();
   }, []);
+
+  // Filter states based on selected country
+  useEffect(() => {
+    if (selectedCountry) {
+      setStates(State.getStatesOfCountry(selectedCountry));
+      // Reset state and city when country changes
+      // Note: react-hook-form handles value updates, but we might need to clear them if needed
+    } else {
+      setStates([]);
+    }
+  }, [selectedCountry]);
+
+  // Filter cities based on selected state
+  useEffect(() => {
+    if (selectedCountry && selectedState) {
+      setCities(City.getCitiesOfState(selectedCountry, selectedState));
+    } else {
+      setCities([]);
+    }
+  }, [selectedCountry, selectedState]);
 
   // =====================================
   // SUBMIT HANDLER
@@ -233,15 +250,16 @@ const AddUserPage: React.FC = () => {
         mobile: data.mobile,
         membershipType: data.membershipType,
         role: data.role,
-        ...(isDigitalMembership
-          ? {
-              city: data.city,
-              state: data.state,
-              country: data.country,
-            }
-          : {
-              region: data.region,
-            }),
+        // Location Fields (Convert codes to names where applicable)
+        country: Country.getCountryByCode(data.country || "")?.name || data.country,
+        state: State.getStateByCodeAndCountry(data.state || "", data.country || "")?.name || data.state,
+        city: data.city,
+        area: data.area,
+        pincode: data.pincode,
+        // Region (for non-digital)
+        ...(!isDigitalMembership && { region: data.region }),
+
+
         ...(data.referBy && { referBy: data.referBy }),
         ...(data.username && { username: data.username }),
       };
@@ -347,9 +365,8 @@ const AddUserPage: React.FC = () => {
                     <input
                       {...field}
                       type="text"
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                        errors.fname ? "border-red-500" : "border-gray-300"
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${errors.fname ? "border-red-500" : "border-gray-300"
+                        }`}
                       placeholder="Enter first name"
                     />
                   )}
@@ -373,9 +390,8 @@ const AddUserPage: React.FC = () => {
                     <input
                       {...field}
                       type="text"
-                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${
-                        errors.lname ? "border-red-500" : "border-gray-300"
-                      }`}
+                      className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${errors.lname ? "border-red-500" : "border-gray-300"
+                        }`}
                       placeholder="Enter last name (optional)"
                     />
                   )}
@@ -402,9 +418,8 @@ const AddUserPage: React.FC = () => {
                     <input
                       {...field}
                       type="email"
-                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.email ? "border-red-500" : "border-gray-300"
-                      }`}
+                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.email ? "border-red-500" : "border-gray-300"
+                        }`}
                       placeholder="user@example.com"
                     />
                   )}
@@ -429,9 +444,8 @@ const AddUserPage: React.FC = () => {
                       {...field}
                       type="tel"
                       maxLength={10}
-                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.mobile ? "border-red-500" : "border-gray-300"
-                      }`}
+                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.mobile ? "border-red-500" : "border-gray-300"
+                        }`}
                       placeholder="10-digit mobile number"
                     />
                   )}
@@ -457,11 +471,10 @@ const AddUserPage: React.FC = () => {
                   render={({ field }) => (
                     <select
                       {...field}
-                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.membershipType
-                          ? "border-red-500"
-                          : "border-gray-300"
-                      }`}
+                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.membershipType
+                        ? "border-red-500"
+                        : "border-gray-300"
+                        }`}
                     >
                       <option value="">Select Membership Type</option>
                       {membershipTypes.map((type) => (
@@ -490,9 +503,8 @@ const AddUserPage: React.FC = () => {
                   render={({ field }) => (
                     <select
                       {...field}
-                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                        errors.role ? "border-red-500" : "border-gray-300"
-                      }`}
+                      className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.role ? "border-red-500" : "border-gray-300"
+                        }`}
                     >
                       <option value="">Select Role</option>
                       {roles.map((role) => (
@@ -511,118 +523,12 @@ const AddUserPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Conditional Fields */}
-            {!isDigitalMembership ? (
-              /* Region & Referred By */
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Region <span className="text-red-500">*</span>
-                  </label>
-                  <Controller
-                    name="region"
-                    control={control}
-                    render={({ field }) => (
-                      <select
-                        {...field}
-                        className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                          errors.region ? "border-red-500" : "border-gray-300"
-                        }`}
-                      >
-                        <option value="">Select Region</option>
-                        {regions.map((region) => (
-                          <option key={region._id} value={region._id}>
-                            {region.regionName}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  />
-                  {errors.region && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {errors.region.message}
-                    </p>
-                  )}
-                </div>
+            {/* Location Details */}
+            <div className="bg-gray-50 p-6 rounded-lg border border-gray-200">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Location Details</h3>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Referred By
-                  </label>
-                  <Controller
-                    name="referBy"
-                    control={control}
-                    render={({ field }) => (
-                      <select
-                        {...field}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="">Select Referrer (Optional)</option>
-                        {coreMembers.map((member) => (
-                          <option key={member._id} value={member._id}>
-                            {member.fname} {member.lname}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  />
-                </div>
-              </div>
-            ) : (
-              /* City, State, Country */
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      City <span className="text-red-500">*</span>
-                    </label>
-                    <Controller
-                      name="city"
-                      control={control}
-                      render={({ field }) => (
-                        <input
-                          {...field}
-                          type="text"
-                          className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                            errors.city ? "border-red-500" : "border-gray-300"
-                          }`}
-                          placeholder="Enter city"
-                        />
-                      )}
-                    />
-                    {errors.city && (
-                      <p className="text-red-500 text-sm mt-1">
-                        {errors.city.message}
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      State <span className="text-red-500">*</span>
-                    </label>
-                    <Controller
-                      name="state"
-                      control={control}
-                      render={({ field }) => (
-                        <input
-                          {...field}
-                          type="text"
-                          className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                            errors.state ? "border-red-500" : "border-gray-300"
-                          }`}
-                          placeholder="Enter state"
-                        />
-                      )}
-                    />
-                    {errors.state && (
-                      <p className="text-red-500 text-sm mt-1">
-                        {errors.state.message}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Country */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Country <span className="text-red-500">*</span>
@@ -631,24 +537,129 @@ const AddUserPage: React.FC = () => {
                     name="country"
                     control={control}
                     render={({ field }) => (
-                      <input
+                      <select
                         {...field}
-                        type="text"
-                        className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                          errors.country ? "border-red-500" : "border-gray-300"
-                        }`}
-                        placeholder="Enter country"
-                      />
+                        className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.country ? "border-red-500" : "border-gray-300"
+                          }`}
+                        onChange={(e) => {
+                          field.onChange(e.target.value);
+                          // Reset state and city when country changes
+                        }}
+                      >
+                        <option value="">Select Country</option>
+                        {countries.map((c) => (
+                          <option key={c.isoCode} value={c.isoCode}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
                     )}
                   />
                   {errors.country && (
-                    <p className="text-red-500 text-sm mt-1">
-                      {errors.country.message}
-                    </p>
+                    <p className="text-red-500 text-sm mt-1">{errors.country.message}</p>
                   )}
                 </div>
+
+                {/* State */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    State <span className="text-red-500">*</span>
+                  </label>
+                  <Controller
+                    name="state"
+                    control={control}
+                    render={({ field }) => (
+                      <select
+                        {...field}
+                        disabled={!selectedCountry}
+                        className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.state ? "border-red-500" : "border-gray-300"
+                          } ${!selectedCountry ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                      >
+                        <option value="">Select State</option>
+                        {states.map((s) => (
+                          <option key={s.isoCode} value={s.isoCode}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  />
+                  {errors.state && (
+                    <p className="text-red-500 text-sm mt-1">{errors.state.message}</p>
+                  )}
+                </div>
+
+                {/* City */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    City <span className="text-red-500">*</span>
+                  </label>
+                  <Controller
+                    name="city"
+                    control={control}
+                    render={({ field }) => (
+                      <select
+                        {...field}
+                        disabled={!selectedState}
+                        className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.city ? "border-red-500" : "border-gray-300"
+                          } ${!selectedState ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                      >
+                        <option value="">Select City</option>
+                        {cities.map((c) => (
+                          <option key={c.name} value={c.name}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  />
+                  {errors.city && (
+                    <p className="text-red-500 text-sm mt-1">{errors.city.message}</p>
+                  )}
+                </div>
+
+                {/* Area */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Area
+                  </label>
+                  <Controller
+                    name="area"
+                    control={control}
+                    render={({ field }) => (
+                      <input
+                        {...field}
+                        type="text"
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter Area / Locality"
+                      />
+                    )}
+                  />
+                </div>
+
+                {/* Pincode */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Pincode
+                  </label>
+                  <Controller
+                    name="pincode"
+                    control={control}
+                    render={({ field }) => (
+                      <input
+                        {...field}
+                        type="text"
+                        maxLength={6}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Enter Pincode"
+                      />
+                    )}
+                  />
+                </div>
               </div>
-            )}
+            </div>
+
+
 
             {/* Username */}
             <div>
@@ -662,9 +673,8 @@ const AddUserPage: React.FC = () => {
                   <input
                     {...field}
                     type="text"
-                    className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      errors.username ? "border-red-500" : "border-gray-300"
-                    }`}
+                    className={`w-full px-4 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent ${errors.username ? "border-red-500" : "border-gray-300"
+                      }`}
                     placeholder="Optional - auto-generated if empty"
                   />
                 )}

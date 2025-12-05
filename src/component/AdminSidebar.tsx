@@ -275,6 +275,40 @@ const SidebarContent = ({
       link: "/user-core",
       roles: ["core-member"],
     },
+    // Franchise Partner Routes (Master Franchise & Area Franchise)
+    {
+      text: "Dashboard",
+      icon: <DashboardIcon />,
+      link: "/dashboard-franchise",
+      roles: ["master-franchise", "area-franchise"],
+    },
+
+    {
+      text: "Area Management",
+      icon: <MapIcon />,
+      link: "/hierarchy/areas",
+      roles: ["master-franchise"],
+    },
+    {
+      text: "Commission Dashboard",
+      icon: <MonetizationOnIcon />,
+      link: "/finance/commissions",
+      roles: ["master-franchise", "area-franchise"],
+    },
+    // CGC Routes
+    {
+      text: "Dashboard",
+      icon: <DashboardIcon />,
+      link: "/dashboard-cgc",
+      roles: ["cgc"],
+    },
+    // DCP Routes
+    {
+      text: "Dashboard",
+      icon: <DashboardIcon />,
+      link: "/dashboard-dcp",
+      roles: ["dcp"],
+    },
   ];
 
   const filteredMenu = menuItems.filter((item) =>

@@ -18,7 +18,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 const theme = createTheme({
   palette: {
     primary: {
-      main: "#1976d2", // blue
+      main: "#1976d2", 
     },
     secondary: {
       main: "#f50057", // pink
@@ -67,12 +67,17 @@ const Layout: React.FC = () => {
 
   const isAuthPage = location.pathname === "/" || location.pathname === "/signup";
 
+
+
+  // Hide header/sidebar for auth pages only
+  const shouldHideHeaderSidebar = isAuthPage;
+
   return (
     <div className="flex bg-gray-100 h-screen">
-      {!isAuthPage && isSidebarAndHeaderVisible && <AdminSidebar />}
+      {!shouldHideHeaderSidebar && isSidebarAndHeaderVisible && <AdminSidebar />}
 
       <div className="flex flex-col flex-1">
-        {!isAuthPage && isSidebarAndHeaderVisible && (
+        {!shouldHideHeaderSidebar && isSidebarAndHeaderVisible && (
           <Header title={currentTitle} />
         )}
 

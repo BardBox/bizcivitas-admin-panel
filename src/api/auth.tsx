@@ -11,6 +11,18 @@ interface User {
   isEmailVerified: boolean;
   membershipStatus: boolean;
   mobile: number;
+  zoneId?: {
+    _id: string;
+    zoneName: string;
+    cityId: string;
+    stateId?: string;
+    countryId?: string;
+  };
+  areaId?: {
+    _id: string;
+    areaName: string;
+    zoneId: string;
+  };
 }
 
 interface LoginResponse {

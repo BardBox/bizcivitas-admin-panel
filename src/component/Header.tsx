@@ -30,28 +30,57 @@ const Header: React.FC<HeaderProps> = ({ title }) => {
   const navigate = useNavigate();
   const isMobile = useMediaQuery("(max-width: 768px)");
 
-  // Fetch user data from API
-useEffect(() => {
-  const fetchUser = async () => {
-    try {
-      const token = localStorage.getItem("token");
-      const response = await api.get("/users/get-user", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+  // Fetch user data from API (only for admin users)
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const storedUser = localStorage.getItem("user");
+        const userRole = localStorage.getItem("role");
+        
+        // If user role is not admin, skip API call and use stored user data
+        if (userRole !== "admin") {
+          if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            setUser({
+              fname: parsedUser.fname,
+              lname: parsedUser.lname || "",
+              role: parsedUser.role,
+              avatar: parsedUser.avatar || "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg",
+            });
+          }
+          return;
+        }
+        
+        // For admin users, fetch from API
+        const token = localStorage.getItem("token");
+        const response = await api.get("/users/get-user", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-      if (response.data.success) {
-        const { fname, lname, role, avatar } = response.data.data;
-        setUser({ fname, lname, role, avatar });
+        if (response.data.success) {
+          const { fname, lname, role, avatar } = response.data.data;
+          setUser({ fname, lname, role, avatar });
+        }
+      } catch (error) {
+        console.error("Error fetching user data:", error);
+        // Fallback to stored user data if API fails
+        const storedUser = localStorage.getItem("user");
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          setUser({
+            fname: parsedUser.fname,
+            lname: parsedUser.lname || "",
+            role: parsedUser.role,
+            avatar: parsedUser.avatar || "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg",
+          });
+        }
       }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-    }
-  };
+    };
 
-  fetchUser();
-}, []);
+    fetchUser();
+  }, []);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);

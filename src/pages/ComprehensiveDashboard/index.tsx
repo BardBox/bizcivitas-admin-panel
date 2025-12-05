@@ -16,9 +16,7 @@ import {
 } from "lucide-react";
 import api from "../../api/api";
 import { toast } from "react-toastify";
-import BizWinAnalytics from "../BizWinAnalytics";
 import ReferralAnalytics from "../ReferralAnalytics";
-// import BizConnectAnalytics from "../BizConnectAnalytics"; // Hidden until backend endpoint is ready
 
 interface StatCardData {
   title: string;
@@ -130,7 +128,6 @@ export default function ComprehensiveDashboard() {
     );
   }
 
-  // Overview Stats Cards
   const overviewCards: StatCardData[] = [
     {
       title: "BizWin Transactions",
@@ -160,7 +157,6 @@ export default function ComprehensiveDashboard() {
 
   return (
     <Box sx={{ p: 3, bgcolor: "#f8fafc", minHeight: "100vh" }}>
-      {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" sx={{ fontWeight: 700, color: "#1e293b", mb: 1 }}>
           Comprehensive Admin Dashboard
@@ -170,7 +166,6 @@ export default function ComprehensiveDashboard() {
         </Typography>
       </Box>
 
-      {/* Overview Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {overviewCards.map((card, index) => {
           const Icon = card.icon;
@@ -224,7 +219,6 @@ export default function ComprehensiveDashboard() {
         })}
       </Grid>
 
-      {/* Tabs for Detailed Views */}
       <Card sx={{ borderRadius: 3, boxShadow: "0 4px 12px rgba(0,0,0,0.08)", mb: 4 }}>
         <Tabs
           value={activeTab}
@@ -244,21 +238,32 @@ export default function ComprehensiveDashboard() {
         </Tabs>
 
         <CardContent sx={{ p: 3 }}>
-          {/* BizWin Tab */}
           {activeTab === 0 && (
-            <Box>
-              <BizWinAnalytics />
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "400px",
+                textAlign: "center",
+              }}
+            >
+              <Typography variant="h4" sx={{ fontWeight: 700, color: "#1e293b", mb: 2 }}>
+                BizWin Analytics Coming Soon
+              </Typography>
+              <Typography variant="body1" sx={{ color: "#64748b", maxWidth: "500px" }}>
+                BizWin analytics are being updated. Please check back soon!
+              </Typography>
             </Box>
           )}
 
-          {/* BizConnect Tab */}
           {activeTab === 1 && (
             <Box>
               <ReferralAnalytics />
             </Box>
           )}
 
-          {/* Invite Analytics Tab - Coming Soon */}
           {activeTab === 2 && (
             <Box
               sx={{
@@ -275,7 +280,7 @@ export default function ComprehensiveDashboard() {
                 Coming Soon
               </Typography>
               <Typography variant="body1" sx={{ color: "#64748b", maxWidth: "500px" }}>
-                Invite Analytics is currently under development. This feature will provide detailed insights into invitation patterns and conversion metrics.
+                Invite Analytics is currently under development.
               </Typography>
             </Box>
           )}

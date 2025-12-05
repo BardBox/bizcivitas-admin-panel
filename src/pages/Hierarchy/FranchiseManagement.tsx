@@ -9,11 +9,17 @@ import { createFranchiseUser, getUsersByRole, updateFranchiseUser, deleteFranchi
 import { getAllZones, Zone } from '../../api/zoneApi';
 import { getAllAreas, Area } from '../../api/areaApi';
 import { toast } from 'react-toastify';
+import { getUserFromLocalStorage } from '../../api/auth';
 
 const FranchiseManagement: React.FC = () => {
     const queryClient = useQueryClient();
+    const user = getUserFromLocalStorage();
+    const isMasterFranchise = user?.role === 'master-franchise';
+
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [viewRole, setViewRole] = useState<'master-franchise' | 'area-franchise'>('master-franchise');
+    const [viewRole, setViewRole] = useState<'master-franchise' | 'area-franchise'>(
+        isMasterFranchise ? 'area-franchise' : 'master-franchise'
+    );
 
     // Form State
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -22,7 +28,9 @@ const FranchiseManagement: React.FC = () => {
     const [email, setEmail] = useState('');
     const [mobile, setMobile] = useState('');
     const [password, setPassword] = useState('');
-    const [role, setRole] = useState<'master-franchise' | 'area-franchise'>('master-franchise');
+    const [role, setRole] = useState<'master-franchise' | 'area-franchise'>(
+        isMasterFranchise ? 'area-franchise' : 'master-franchise'
+    );
     const [selectedZone, setSelectedZone] = useState<any>(null);
     const [selectedArea, setSelectedArea] = useState<any>(null);
 
@@ -38,8 +46,13 @@ const FranchiseManagement: React.FC = () => {
     });
 
     const { data: areas = [] } = useQuery({
-        queryKey: ['areas'],
-        queryFn: () => getAllAreas(),
+        queryKey: ['areas', selectedZone?.value],
+        queryFn: () => {
+            // Only fetch areas if a zone is selected
+            if (!selectedZone?.value) return [];
+            return getAllAreas();
+        },
+        enabled: !!selectedZone?.value && role === 'area-franchise',
     });
 
     // Mutations
@@ -211,7 +224,7 @@ const FranchiseManagement: React.FC = () => {
                 // For Area Franchise, show Area name
                 if (user.role === 'area-franchise' && user.areaId) {
                     const areaName = typeof user.areaId === 'object' ? user.areaId.areaName : null;
-                    const zoneName = typeof user.areaId === 'object' && user.areaId.zoneId ? user.areaId.zoneId.zoneName : user.city;
+                    const zoneName = typeof user.areaId === 'object' && typeof user.areaId.zoneId === 'object' ? user.areaId.zoneId.zoneName : user.city;
                     return (
                         <div className="text-sm">
                             <div>{areaName}</div>
@@ -296,7 +309,7 @@ const FranchiseManagement: React.FC = () => {
             if (typeof user.areaId === 'object' && user.areaId._id) {
                 // Already populated
                 setSelectedArea({
-                    label: `${user.areaId.areaName} (${user.areaId.zoneId.zoneName})`,
+                    label: `${user.areaId.areaName} (${typeof user.areaId.zoneId === 'object' ? user.areaId.zoneId.zoneName : 'Unknown Zone'})`,
                     value: user.areaId._id,
                     area: user.areaId
                 });
@@ -339,14 +352,36 @@ const FranchiseManagement: React.FC = () => {
         zone: zone
     }));
 
-    // Options for Area Select (filtered by selected zone if any)
-    const areaOptions = areas
-        .filter((area: Area) => !selectedZone || area.zoneId._id === selectedZone.value)
-        .map((area: Area) => ({
-            label: `${area.areaName} (${area.zoneId.zoneName})`,
-            value: area._id,
-            area: area
-        }));
+    // Get all assigned area IDs from existing area franchise users
+    const assignedAreaIds = new Set(
+        franchiseUsers
+            .filter((user: FranchiseUser) => user.role === 'area-franchise' && user.areaId)
+            .map((user: FranchiseUser) => {
+                // Handle both populated (object) and non-populated (string) areaId
+                return typeof user.areaId === 'object' ? user.areaId._id : user.areaId;
+            })
+    );
+
+    // When editing, allow the current area to be shown even if assigned
+    const editingAreaId = editingId && role === 'area-franchise' && selectedArea?.value ? selectedArea.value : null;
+
+    // Options for Area Select (only show if zone is selected, filtered by zone and excluding already assigned areas)
+    const areaOptions = selectedZone
+        ? areas
+            .filter((area: Area) => {
+                // Must match the selected zone
+                const zoneId = typeof area.zoneId === 'object' ? area.zoneId._id : area.zoneId;
+                const matchesZone = zoneId === selectedZone.value;
+                // Exclude already assigned areas (except when editing the current area)
+                const isAvailable = !assignedAreaIds.has(area._id) || area._id === editingAreaId;
+                return matchesZone && isAvailable;
+            })
+            .map((area: Area) => ({
+                label: `${area.areaName} (${typeof area.zoneId === 'object' ? area.zoneId.zoneName : 'Unknown Zone'})`,
+                value: area._id,
+                area: area
+            }))
+        : []; // Return empty array if no zone is selected
 
     return (
         <div className="p-6">
@@ -360,31 +395,31 @@ const FranchiseManagement: React.FC = () => {
             />
 
             {/* View Toggle */}
-            <div className="mb-6 flex items-center space-x-4">
-                <label className="text-sm font-medium text-gray-700">View:</label>
-                <div className="flex space-x-2">
-                    <button
-                        onClick={() => setViewRole('master-franchise')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                            viewRole === 'master-franchise'
+            {!isMasterFranchise && (
+                <div className="mb-6 flex items-center space-x-4">
+                    <label className="text-sm font-medium text-gray-700">View:</label>
+                    <div className="flex space-x-2">
+                        <button
+                            onClick={() => setViewRole('master-franchise')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewRole === 'master-franchise'
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                    >
-                        Master Franchise
-                    </button>
-                    <button
-                        onClick={() => setViewRole('area-franchise')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                            viewRole === 'area-franchise'
+                                }`}
+                        >
+                            Master Franchise
+                        </button>
+                        <button
+                            onClick={() => setViewRole('area-franchise')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewRole === 'area-franchise'
                                 ? 'bg-blue-600 text-white'
                                 : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                        }`}
-                    >
-                        Area Franchise
-                    </button>
+                                }`}
+                        >
+                            Area Franchise
+                        </button>
+                    </div>
                 </div>
-            </div>
+            )}
 
             <Card
                 title={`${viewRole === 'master-franchise' ? 'Master Franchise' : 'Area Franchise'} Partners`}
@@ -418,16 +453,18 @@ const FranchiseManagement: React.FC = () => {
                             Partner Type <span className="text-red-500">*</span>
                         </label>
                         <div className="flex space-x-6">
-                            <label className="flex items-center cursor-pointer">
-                                <input
-                                    type="radio"
-                                    value="master-franchise"
-                                    checked={role === 'master-franchise'}
-                                    onChange={(e) => setRole(e.target.value as 'master-franchise')}
-                                    className="mr-2 w-4 h-4"
-                                />
-                                <span className="text-sm">Master Franchise (Zone Level)</span>
-                            </label>
+                            {!isMasterFranchise && (
+                                <label className="flex items-center cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        value="master-franchise"
+                                        checked={role === 'master-franchise'}
+                                        onChange={(e) => setRole(e.target.value as 'master-franchise')}
+                                        className="mr-2 w-4 h-4"
+                                    />
+                                    <span className="text-sm">Master Franchise (Zone Level)</span>
+                                </label>
+                            )}
                             <label className="flex items-center cursor-pointer">
                                 <input
                                     type="radio"
@@ -435,6 +472,7 @@ const FranchiseManagement: React.FC = () => {
                                     checked={role === 'area-franchise'}
                                     onChange={(e) => setRole(e.target.value as 'area-franchise')}
                                     className="mr-2 w-4 h-4"
+                                    readOnly={isMasterFranchise}
                                 />
                                 <span className="text-sm">Area Franchise (Area Level)</span>
                             </label>

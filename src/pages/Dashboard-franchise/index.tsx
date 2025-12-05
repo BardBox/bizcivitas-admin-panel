@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Grid,
@@ -18,11 +18,19 @@ import {
   LinearProgress,
   Avatar,
   Divider,
+  CircularProgress,
+  Alert,
+  ToggleButtonGroup,
+  ToggleButton,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Button,
 } from "@mui/material";
+import { useNavigate } from "react-router-dom";
 import {
-  TrendingUp,
-  TrendingDown,
-  Remove,
+
   Groups,
   Handshake,
   EmojiEvents,
@@ -30,88 +38,21 @@ import {
   Event,
 } from "@mui/icons-material";
 import { getUserFromLocalStorage } from "../../api/auth";
+import axiosInstance from "../../axiosInstance";
+import ChartsView from "./ChartsView";
+import { useVisibility } from "../../context/VisibilityContext";
 
-// Mock data - will be replaced with real API calls
-const mockPerformanceData = {
-  zone: {
-    name: "Mumbai Zone",
-    totalAreas: 3,
-    totalDCPs: 12,
-    totalCoreGroups: 24,
-    totalMembers: 450,
-  },
-  // Zone-level aggregated metrics
-  overall: {
-    meetups: { total: 145, offline: 98, digital: 47 },
-    bizConnect: { total: 234, offline: 167, digital: 67 },
-    bizWin: { total: 1850000, offline: 1320000, digital: 530000 },
-    visitor: { total: 89, offline: 78, digital: 11 },
-    events: { total: 56, offline: 34, digital: 22 },
-  },
-  // Area-wise data (each AF)
-  areas: [
-    {
-      id: 1,
-      name: "Andheri Area",
-      afName: "Rajesh Kumar",
-      dcps: 4,
-      coreGroups: 8,
-      members: 180,
-      performanceScore: 92,
-      trend: "up",
-      metrics: {
-        meetups: 58,
-        bizConnect: 98,
-        bizWin: 750000,
-        visitor: 34,
-        events: 22,
-      },
-      commission: 105000,
-    },
-    {
-      id: 2,
-      name: "Central Mumbai Area",
-      afName: "Priya Sharma",
-      dcps: 4,
-      coreGroups: 8,
-      members: 145,
-      performanceScore: 88,
-      trend: "up",
-      metrics: {
-        meetups: 45,
-        bizConnect: 78,
-        bizWin: 620000,
-        visitor: 28,
-        events: 18,
-      },
-      commission: 87000,
-    },
-    {
-      id: 3,
-      name: "Borivali Area",
-      afName: "Amit Patel",
-      dcps: 4,
-      coreGroups: 8,
-      members: 125,
-      performanceScore: 85,
-      trend: "stable",
-      metrics: {
-        meetups: 42,
-        bizConnect: 58,
-        bizWin: 480000,
-        visitor: 27,
-        events: 16,
-      },
-      commission: 67000,
-    },
-  ],
-  monthlyTrend: {
-    meetups: "+12%",
-    bizConnect: "+18%",
-    bizWin: "+25%",
-    visitor: "+8%",
-    events: "+15%",
-  },
+// Role-based dashboard types
+type DashboardRole = "master-franchise" | "area-franchise";
+
+// Helper function to determine dashboard role
+const getDashboardRole = (user: any): DashboardRole | null => {
+  if (!user || !user.role) return null;
+
+  if (user.role === "master-franchise") return "master-franchise";
+  if (user.role === "area-franchise") return "area-franchise";
+
+  return null;
 };
 
 interface TabPanelProps {
@@ -135,19 +76,152 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
+interface DashboardData {
+  zone: {
+    id: string;
+    name: string;
+    city: string;
+    state: string;
+    country: string;
+    status: string;
+  };
+  masterFranchise: {
+    _id: string;
+    fname: string;
+    lname?: string;
+    email: string;
+    phone: string;
+    businessCategory: string;
+  };
+  summary: {
+    totalAreas: number;
+    activeAreas: number;
+    totalMembers: number;
+    offlineMembers: number;
+    digitalMembers: number;
+  };
+  metrics: {
+    period: string;
+    membershipFilter: string;
+    startDate: Date;
+    endDate: Date;
+    zoneWide?: {
+      totalMeetups: number;
+      totalBizConnect: number;
+      totalBizWinAmount: number;
+      totalVisitorInvitations: number;
+      totalEvents: number;
+      avgPerformanceScore: number;
+      userCount: number;
+    };
+    areaWide?: {
+      totalMeetups: number;
+      totalBizConnect: number;
+      totalBizWinAmount: number;
+      totalVisitorInvitations: number;
+      totalEvents: number;
+      avgPerformanceScore: number;
+      userCount: number;
+    };
+  };
+  areaFranchises: Array<{
+    areaId: string;
+    areaName: string;
+    areaCode: string;
+    status: string;
+    areaFranchise: {
+      _id: string;
+      fname: string;
+      lname?: string;
+      email: string;
+      phoneNumber: string;
+      businessCategory: string;
+      avatar?: string;
+    } | null;
+    metrics: {
+      totalMeetups: number;
+      totalBizConnect: number;
+      totalBizWinAmount: number;
+      totalVisitorInvitations: number;
+      totalEvents: number;
+      avgPerformanceScore: number;
+      userCount: number;
+    } | null;
+  }>;
+  topPerformers: Array<any>;
+}
+
 const DashboardFranchise: React.FC = () => {
+  const navigate = useNavigate();
   const user = getUserFromLocalStorage();
+  const { setSidebarAndHeaderVisibility } = useVisibility();
   const [tabValue, setTabValue] = useState(0);
+  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("monthly");
+  const [membershipFilter, setMembershipFilter] = useState<"total" | "offline" | "digital">("total");
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Detect user role
+  const dashboardRole = getDashboardRole(user);
+
+  // Ensure sidebar and header are visible
+  useEffect(() => {
+    setSidebarAndHeaderVisibility(true);
+  }, [setSidebarAndHeaderVisibility]);
+
+  // Fetch dashboard data
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Validate role
+        if (!dashboardRole) {
+          setError("Invalid user role. Only Master Franchise and Area Franchise partners can access this dashboard.");
+          setLoading(false);
+          return;
+        }
+
+        // Determine endpoint based on role
+        const endpoint =
+          dashboardRole === "master-franchise"
+            ? "/franchise/mf/dashboard"
+            : "/franchise/af/dashboard";
+
+        console.log(`Fetching dashboard data from ${endpoint} for role: ${dashboardRole}`);
+
+        const response = await axiosInstance.get(endpoint, {
+          params: {
+            period,
+            membershipFilter,
+          },
+        });
+
+        console.log("Dashboard API response:", response.data);
+
+        if (response.data.success) {
+          setDashboardData(response.data.data);
+        } else {
+          setError("Failed to fetch dashboard data");
+        }
+      } catch (err: any) {
+        console.error("Dashboard fetch error:", err);
+        setError(err.response?.data?.message || "Failed to load dashboard");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [period, membershipFilter, dashboardRole]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
-  const getTrendIcon = (trend: string) => {
-    if (trend === "up") return <TrendingUp color="success" />;
-    if (trend === "down") return <TrendingDown color="error" />;
-    return <Remove color="disabled" />;
-  };
+
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -157,19 +231,96 @@ const DashboardFranchise: React.FC = () => {
     }).format(amount);
   };
 
+  // Loading state
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "400px" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">{error}</Alert>
+      </Box>
+    );
+  }
+
+
+
+  // No data state
+  if (!dashboardData) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="info">No dashboard data available</Alert>
+      </Box>
+    );
+  }
+
+  const metricsData = dashboardData.metrics.zoneWide || dashboardData.metrics.areaWide || {
+    totalMeetups: 0,
+    totalBizConnect: 0,
+    totalBizWinAmount: 0,
+    totalVisitorInvitations: 0,
+    totalEvents: 0,
+    avgPerformanceScore: 0,
+    userCount: 0,
+  };
+
+  // Dynamic title based on role
+  const getDashboardTitle = () => {
+    if (dashboardRole === "master-franchise") {
+      return `Master Franchise Partner Dashboard - ${dashboardData.zone.name}`;
+    } else if (dashboardRole === "area-franchise") {
+      return `Area Franchise Partner Dashboard - ${dashboardData.zone?.name || "Your Area"}`;
+    }
+    return "Franchise Dashboard";
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       {/* Welcome Section */}
-      <Typography variant="h4" gutterBottom>
-        Welcome, {user?.fname} {user?.lname}
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        Master Franchise Partner Dashboard - {mockPerformanceData.zone.name}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
-        Areas: {mockPerformanceData.zone.totalAreas} | DCPs: {mockPerformanceData.zone.totalDCPs} | Core Groups:{" "}
-        {mockPerformanceData.zone.totalCoreGroups} | Total Members: {mockPerformanceData.zone.totalMembers}
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Welcome, {user?.fname} {user?.lname}
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+            {getDashboardTitle()}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            {dashboardRole === "master-franchise" && `Areas: ${dashboardData.summary.totalAreas} | `}
+            Total Members: {dashboardData.summary.totalMembers}
+            {" ("}Offline: {dashboardData.summary.offlineMembers}, Digital: {dashboardData.summary.digitalMembers}{")"}
+          </Typography>
+        </Box>
+
+        {/* Filter Controls */}
+        <Box display="flex" gap={2}>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Period</InputLabel>
+            <Select value={period} label="Period" onChange={(e) => setPeriod(e.target.value as any)}>
+              <MenuItem value="daily">Daily</MenuItem>
+              <MenuItem value="weekly">Weekly</MenuItem>
+              <MenuItem value="monthly">Monthly</MenuItem>
+            </Select>
+          </FormControl>
+
+          <ToggleButtonGroup
+            value={membershipFilter}
+            exclusive
+            onChange={(_, value) => value && setMembershipFilter(value)}
+            size="small"
+          >
+            <ToggleButton value="total">Total</ToggleButton>
+            <ToggleButton value="offline">Offline</ToggleButton>
+            <ToggleButton value="digital">Digital</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      </Box>
 
       {/* Zone-Level Key Metrics Overview */}
       <Grid container spacing={3} mt={2}>
@@ -179,17 +330,15 @@ const DashboardFranchise: React.FC = () => {
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <Groups />
-                <Chip label={mockPerformanceData.monthlyTrend.meetups} size="small" color="success" />
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.meetups.total}
+                {metricsData.totalMeetups}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 M.U. (Meetups)
               </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.meetups.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.meetups.digital}</span>
+              <Box mt={2} display="flex" justifyContent="center" sx={{ fontSize: "0.75rem" }}>
+                <span>{period.charAt(0).toUpperCase() + period.slice(1)} Total</span>
               </Box>
             </CardContent>
           </Card>
@@ -201,17 +350,15 @@ const DashboardFranchise: React.FC = () => {
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <Handshake />
-                <Chip label={mockPerformanceData.monthlyTrend.bizConnect} size="small" color="success" />
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.bizConnect.total}
+                {metricsData.totalBizConnect}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 B.C. (BizConnect)
               </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.bizConnect.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.bizConnect.digital}</span>
+              <Box mt={2} display="flex" justifyContent="center" sx={{ fontSize: "0.75rem" }}>
+                <span>{period.charAt(0).toUpperCase() + period.slice(1)} Total</span>
               </Box>
             </CardContent>
           </Card>
@@ -223,17 +370,15 @@ const DashboardFranchise: React.FC = () => {
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <EmojiEvents />
-                <Chip label={mockPerformanceData.monthlyTrend.bizWin} size="small" color="success" />
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {formatCurrency(mockPerformanceData.overall.bizWin.total)}
+                {formatCurrency(metricsData.totalBizWinAmount)}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 B.W. (BizWin)
               </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {formatCurrency(mockPerformanceData.overall.bizWin.offline)}</span>
-                <span>Digital: {formatCurrency(mockPerformanceData.overall.bizWin.digital)}</span>
+              <Box mt={2} display="flex" justifyContent="center" sx={{ fontSize: "0.75rem" }}>
+                <span>{period.charAt(0).toUpperCase() + period.slice(1)} Total</span>
               </Box>
             </CardContent>
           </Card>
@@ -245,17 +390,15 @@ const DashboardFranchise: React.FC = () => {
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <Visibility />
-                <Chip label={mockPerformanceData.monthlyTrend.visitor} size="small" color="success" />
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.visitor.total}
+                {metricsData.totalVisitorInvitations}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 VISITOR (Invitations)
               </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.visitor.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.visitor.digital}</span>
+              <Box mt={2} display="flex" justifyContent="center" sx={{ fontSize: "0.75rem" }}>
+                <span>{period.charAt(0).toUpperCase() + period.slice(1)} Total</span>
               </Box>
             </CardContent>
           </Card>
@@ -267,17 +410,15 @@ const DashboardFranchise: React.FC = () => {
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <Event />
-                <Chip label={mockPerformanceData.monthlyTrend.events} size="small" color="success" />
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.events.total}
+                {metricsData.totalEvents}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 EVE (Events)
               </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.events.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.events.digital}</span>
+              <Box mt={2} display="flex" justifyContent="center" sx={{ fontSize: "0.75rem" }}>
+                <span>{period.charAt(0).toUpperCase() + period.slice(1)} Total</span>
               </Box>
             </CardContent>
           </Card>
@@ -287,234 +428,392 @@ const DashboardFranchise: React.FC = () => {
       {/* Tabs for detailed views */}
       <Box sx={{ mt: 4 }}>
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="dashboard tabs">
-          <Tab label="Area Performance" />
-          <Tab label="Area-wise BizWin" />
-          <Tab label="Commission Details" />
+          {dashboardRole === "master-franchise" ? (
+            <>
+              <Tab label="Area Performance" />
+              <Tab label="Area-wise Metrics" />
+              <Tab label="Commission Details" />
+              <Tab label="Charts" />
+            </>
+          ) : (
+            <>
+              <Tab label="Performance Overview" />
+              <Tab label="Detailed Metrics" />
+            </>
+          )}
         </Tabs>
 
-        {/* Area Performance Tab */}
-        <TabPanel value={tabValue} index={0}>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell><strong>Area Name</strong></TableCell>
-                  <TableCell><strong>AF Partner</strong></TableCell>
-                  <TableCell align="center"><strong>DCPs</strong></TableCell>
-                  <TableCell align="center"><strong>Core Groups</strong></TableCell>
-                  <TableCell align="center"><strong>Members</strong></TableCell>
-                  <TableCell align="center"><strong>Performance</strong></TableCell>
-                  <TableCell align="center"><strong>Trend</strong></TableCell>
-                  <TableCell align="right"><strong>Commission</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {mockPerformanceData.areas.map((area) => (
-                  <TableRow key={area.id} hover>
-                    <TableCell><strong>{area.name}</strong></TableCell>
-                    <TableCell>
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Avatar sx={{ width: 32, height: 32 }}>{area.afName[0]}</Avatar>
-                        {area.afName}
-                      </Box>
-                    </TableCell>
-                    <TableCell align="center">{area.dcps}</TableCell>
-                    <TableCell align="center">{area.coreGroups}</TableCell>
-                    <TableCell align="center">{area.members}</TableCell>
-                    <TableCell align="center">
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Box sx={{ width: "100%", mr: 1 }}>
-                          <LinearProgress
-                            variant="determinate"
-                            value={area.performanceScore}
-                            color={area.performanceScore > 85 ? "success" : "primary"}
-                          />
-                        </Box>
-                        <Typography variant="body2">{area.performanceScore}%</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell align="center">{getTrendIcon(area.trend)}</TableCell>
-                    <TableCell align="right">{formatCurrency(area.commission)}</TableCell>
+        {/* Area Performance Tab (Master Franchise only) */}
+        {dashboardRole === "master-franchise" && (
+          <TabPanel value={tabValue} index={0}>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Area Name</strong></TableCell>
+                    <TableCell><strong>AF Partner</strong></TableCell>
+                    <TableCell align="center"><strong>DCPs</strong></TableCell>
+                    <TableCell align="center"><strong>Core Groups</strong></TableCell>
+                    <TableCell align="center"><strong>Members</strong></TableCell>
+                    <TableCell align="center"><strong>Performance</strong></TableCell>
+                    <TableCell align="center"><strong>Trend</strong></TableCell>
+                    <TableCell align="right"><strong>Commission</strong></TableCell>
                   </TableRow>
-                ))}
-                <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                  <TableCell colSpan={7} align="right"><strong>Total Commission:</strong></TableCell>
-                  <TableCell align="right">
-                    <strong>{formatCurrency(mockPerformanceData.areas.reduce((acc, a) => acc + a.commission, 0))}</strong>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </TabPanel>
+                </TableHead>
+                <TableBody>
+                  {dashboardData.areaFranchises.map((area) => (
+                    <TableRow key={area.areaId} hover>
+                      <TableCell><strong>{area.areaName}</strong></TableCell>
+                      <TableCell>
+                        {area.areaFranchise ? (
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Avatar
+                              src={area.areaFranchise.avatar}
+                              sx={{ width: 32, height: 32 }}
+                            >
+                              {area.areaFranchise.fname?.charAt(0) || "U"}
+                            </Avatar>
+                            {`${area.areaFranchise.fname} ${area.areaFranchise.lname || ""}`}
+                          </Box>
+                        ) : (
+                          <Chip label="Not Assigned" size="small" color="warning" />
+                        )}
+                      </TableCell>
+                      <TableCell align="center">-</TableCell>
+                      <TableCell align="center">-</TableCell>
+                      <TableCell align="center">{area.metrics?.userCount || 0}</TableCell>
+                      <TableCell align="center">
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                          <Box sx={{ width: "100%", mr: 1 }}>
+                            <LinearProgress
+                              variant="determinate"
+                              value={area.metrics?.avgPerformanceScore || 0}
+                              color={(area.metrics?.avgPerformanceScore || 0) > 85 ? "success" : "primary"}
+                            />
+                          </Box>
+                          <Typography variant="body2">{Math.round(area.metrics?.avgPerformanceScore || 0)}%</Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center">-</TableCell>
+                      <TableCell align="right">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => navigate(`/dashboard-franchise/area/${area.areaId}`)}
+                        >
+                          View
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+        )}
 
-        {/* Area-wise BizWin Tab */}
-        <TabPanel value={tabValue} index={1}>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell><strong>Area Name</strong></TableCell>
-                  <TableCell align="center"><strong>Meetups</strong></TableCell>
-                  <TableCell align="center"><strong>BizConnect</strong></TableCell>
-                  <TableCell align="center"><strong>BizWin Amount</strong></TableCell>
-                  <TableCell align="center"><strong>Visitor Invitations</strong></TableCell>
-                  <TableCell align="center"><strong>Events</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {mockPerformanceData.areas.map((area) => (
-                  <TableRow key={area.id} hover>
-                    <TableCell><strong>{area.name}</strong></TableCell>
+        {/* Area-wise Metrics Tab (Master Franchise only) */}
+        {dashboardRole === "master-franchise" && (
+          <TabPanel value={tabValue} index={1}>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Area Name</strong></TableCell>
+                    <TableCell align="center"><strong>Meetups</strong></TableCell>
+                    <TableCell align="center"><strong>BizConnect</strong></TableCell>
+                    <TableCell align="center"><strong>BizWin Amount</strong></TableCell>
+                    <TableCell align="center"><strong>Visitor Invitations</strong></TableCell>
+                    <TableCell align="center"><strong>Events</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {dashboardData.areaFranchises.map((area) => (
+                    <TableRow key={area.areaId} hover>
+                      <TableCell><strong>{area.areaName}</strong></TableCell>
+                      <TableCell align="center">
+                        <Chip label={area.metrics?.totalMeetups || 0} color="primary" />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip label={area.metrics?.totalBizConnect || 0} color="secondary" />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Typography variant="subtitle1" fontWeight="bold" color="success.main">
+                          {formatCurrency(area.metrics?.totalBizWinAmount || 0)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip label={area.metrics?.totalVisitorInvitations || 0} color="warning" />
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip label={area.metrics?.totalEvents || 0} color="info" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
+                    <TableCell><strong>Zone Total</strong></TableCell>
                     <TableCell align="center">
-                      <Chip label={area.metrics.meetups} color="primary" />
+                      <Chip
+                        label={metricsData.totalMeetups}
+                        color="primary"
+                      />
                     </TableCell>
                     <TableCell align="center">
-                      <Chip label={area.metrics.bizConnect} color="secondary" />
+                      <Chip
+                        label={metricsData.totalBizConnect}
+                        color="secondary"
+                      />
                     </TableCell>
                     <TableCell align="center">
-                      <Typography variant="subtitle1" fontWeight="bold" color="success.main">
-                        {formatCurrency(area.metrics.bizWin)}
+                      <Typography variant="h6" fontWeight="bold" color="success.main">
+                        {formatCurrency(metricsData.totalBizWinAmount)}
                       </Typography>
                     </TableCell>
                     <TableCell align="center">
-                      <Chip label={area.metrics.visitor} color="warning" />
+                      <Chip
+                        label={metricsData.totalVisitorInvitations}
+                        color="warning"
+                      />
                     </TableCell>
                     <TableCell align="center">
-                      <Chip label={area.metrics.events} color="info" />
+                      <Chip
+                        label={metricsData.totalEvents}
+                        color="info"
+                      />
                     </TableCell>
                   </TableRow>
-                ))}
-                <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                  <TableCell><strong>Zone Total</strong></TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={mockPerformanceData.areas.reduce((acc, a) => acc + a.metrics.meetups, 0)}
-                      color="primary"
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={mockPerformanceData.areas.reduce((acc, a) => acc + a.metrics.bizConnect, 0)}
-                      color="secondary"
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Typography variant="h6" fontWeight="bold" color="success.main">
-                      {formatCurrency(mockPerformanceData.areas.reduce((acc, a) => acc + a.metrics.bizWin, 0))}
-                    </Typography>
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={mockPerformanceData.areas.reduce((acc, a) => acc + a.metrics.visitor, 0)}
-                      color="warning"
-                    />
-                  </TableCell>
-                  <TableCell align="center">
-                    <Chip
-                      label={mockPerformanceData.areas.reduce((acc, a) => acc + a.metrics.events, 0)}
-                      color="info"
-                    />
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </TabPanel>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+        )}
 
-        {/* Commission Details Tab */}
-        <TabPanel value={tabValue} index={2}>
-          <Grid container spacing={3}>
-            {/* Commission by Area */}
-            <Grid item xs={12} md={8}>
-              <Paper sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Commission by Area
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell><strong>Area</strong></TableCell>
-                        <TableCell align="right"><strong>Members</strong></TableCell>
-                        <TableCell align="right"><strong>BizWin Generated</strong></TableCell>
-                        <TableCell align="right"><strong>Commission Earned</strong></TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {mockPerformanceData.areas.map((area) => (
-                        <TableRow key={area.id}>
-                          <TableCell>{area.name}</TableCell>
-                          <TableCell align="right">{area.members}</TableCell>
-                          <TableCell align="right">{formatCurrency(area.metrics.bizWin)}</TableCell>
-                          <TableCell align="right" sx={{ fontWeight: "bold", color: "success.main" }}>
-                            {formatCurrency(area.commission)}
+        {/* Commission Details Tab (Master Franchise only) */}
+        {dashboardRole === "master-franchise" && (
+          <TabPanel value={tabValue} index={2}>
+            <Grid container spacing={3}>
+              {/* Commission by Area */}
+              <Grid item xs={12} md={8}>
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Commission by Area
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell><strong>Area</strong></TableCell>
+                          <TableCell align="right"><strong>Members</strong></TableCell>
+                          <TableCell align="right"><strong>BizWin Generated</strong></TableCell>
+                          <TableCell align="right"><strong>Commission Earned</strong></TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {dashboardData.areaFranchises.map((area) => (
+                          <TableRow key={area.areaId}>
+                            <TableCell>{area.areaName}</TableCell>
+                            <TableCell align="right">{area.metrics?.userCount || 0}</TableCell>
+                            <TableCell align="right">{formatCurrency(area.metrics?.totalBizWinAmount || 0)}</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: "bold", color: "success.main" }}>
+                              {/* Commission calculation pending - will be added in future */}
+                              ₹0
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
+                          <TableCell><strong>Total</strong></TableCell>
+                          <TableCell align="right">
+                            <strong>{dashboardData.summary.totalMembers}</strong>
+                          </TableCell>
+                          <TableCell align="right">
+                            <strong>{formatCurrency(metricsData.totalBizWinAmount)}</strong>
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: "bold", color: "success.main", fontSize: "1.1rem" }}>
+                            {/* Total commission calculation pending */}
+                            ₹0
                           </TableCell>
                         </TableRow>
-                      ))}
-                      <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                        <TableCell><strong>Total</strong></TableCell>
-                        <TableCell align="right"><strong>{mockPerformanceData.areas.reduce((acc, a) => acc + a.members, 0)}</strong></TableCell>
-                        <TableCell align="right"><strong>{formatCurrency(mockPerformanceData.areas.reduce((acc, a) => acc + a.metrics.bizWin, 0))}</strong></TableCell>
-                        <TableCell align="right" sx={{ fontWeight: "bold", color: "success.main", fontSize: "1.1rem" }}>
-                          {formatCurrency(mockPerformanceData.areas.reduce((acc, a) => acc + a.commission, 0))}
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            </Grid>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
 
-            {/* Payout Summary */}
-            <Grid item xs={12} md={4}>
-              <Paper sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Commission Breakdown
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <Box mt={2}>
-                  <Box display="flex" justifyContent="space-between" mb={2}>
-                    <Typography>Offline Members (12%):</Typography>
-                    <Typography fontWeight="bold">{formatCurrency(158000)}</Typography>
+              {/* Payout Summary */}
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Commission Breakdown
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  <Box mt={2}>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Offline Members ({dashboardData.summary.offlineMembers}):</Typography>
+                      <Typography fontWeight="bold">₹0</Typography>
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Digital Members ({dashboardData.summary.digitalMembers}):</Typography>
+                      <Typography fontWeight="bold">₹0</Typography>
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" sx={{ pt: 2, borderTop: "2px solid #e0e0e0" }}>
+                      <Typography variant="h6">Total Commission:</Typography>
+                      <Typography variant="h6" fontWeight="bold" color="primary">
+                        ₹0
+                      </Typography>
+                    </Box>
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Commission calculation feature coming soon
+                    </Alert>
                   </Box>
-                  <Box display="flex" justifyContent="space-between" mb={2}>
-                    <Typography>Digital Members (40%):</Typography>
-                    <Typography fontWeight="bold">{formatCurrency(101000)}</Typography>
-                  </Box>
-                  <Box display="flex" justifyContent="space-between" sx={{ pt: 2, borderTop: "2px solid #e0e0e0" }}>
-                    <Typography variant="h6">Total Commission:</Typography>
-                    <Typography variant="h6" fontWeight="bold" color="primary">
-                      {formatCurrency(259000)}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Paper>
+                </Paper>
 
-              <Paper sx={{ p: 3, mt: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  Payout Status
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <Box mt={2}>
-                  <Box display="flex" justifyContent="space-between" mb={2}>
-                    <Typography>Pending Payouts:</Typography>
-                    <Chip label={formatCurrency(65000)} color="warning" />
+                <Paper sx={{ p: 3, mt: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Payout Status
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  <Box mt={2}>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Pending Payouts:</Typography>
+                      <Chip label="₹0" color="warning" />
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Completed Payouts:</Typography>
+                      <Chip label="₹0" color="success" />
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Next Payout Date:</Typography>
+                      <Typography fontWeight="bold">-</Typography>
+                    </Box>
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Payout tracking feature coming soon
+                    </Alert>
                   </Box>
-                  <Box display="flex" justifyContent="space-between" mb={2}>
-                    <Typography>Completed Payouts:</Typography>
-                    <Chip label={formatCurrency(194000)} color="success" />
-                  </Box>
-                  <Box display="flex" justifyContent="space-between" mb={2}>
-                    <Typography>Next Payout Date:</Typography>
-                    <Typography fontWeight="bold">Dec 15, 2025</Typography>
-                  </Box>
-                </Box>
-              </Paper>
+                </Paper>
+              </Grid>
             </Grid>
-          </Grid>
-        </TabPanel>
+          </TabPanel>
+        )}
+
+        {/* Charts Tab (Master Franchise only) */}
+        {dashboardRole === "master-franchise" && (
+          <TabPanel value={tabValue} index={3}>
+            <ChartsView dashboardRole={dashboardRole} />
+          </TabPanel>
+        )}
+
+        {/* Area Franchise Performance Overview Tab */}
+        {dashboardRole === "area-franchise" && (
+          <TabPanel value={tabValue} index={0}>
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Performance Summary
+                  </Typography>
+                  <Divider sx={{ mb: 2 }} />
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Box display="flex" justifyContent="space-between" mb={2}>
+                        <Typography>Total Members:</Typography>
+                        <Typography fontWeight="bold">{dashboardData.summary.totalMembers}</Typography>
+                      </Box>
+                      <Box display="flex" justifyContent="space-between" mb={2}>
+                        <Typography>Offline Members:</Typography>
+                        <Typography fontWeight="bold">{dashboardData.summary.offlineMembers}</Typography>
+                      </Box>
+                      <Box display="flex" justifyContent="space-between" mb={2}>
+                        <Typography>Digital Members:</Typography>
+                        <Typography fontWeight="bold">{dashboardData.summary.digitalMembers}</Typography>
+                      </Box>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Box display="flex" justifyContent="space-between" mb={2}>
+                        <Typography>Avg Performance Score:</Typography>
+                        <Typography fontWeight="bold">
+                          {Math.round(metricsData.avgPerformanceScore || 0)}%
+                        </Typography>
+                      </Box>
+                      <Box display="flex" justifyContent="space-between" mb={2}>
+                        <Typography>Total BizWin:</Typography>
+                        <Typography fontWeight="bold" color="success.main">
+                          {formatCurrency(metricsData.totalBizWinAmount)}
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            </Grid>
+          </TabPanel>
+        )}
+
+        {/* Area Franchise Detailed Metrics Tab */}
+        {dashboardRole === "area-franchise" && (
+          <TabPanel value={tabValue} index={1}>
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>Metric</strong></TableCell>
+                    <TableCell align="center"><strong>Count</strong></TableCell>
+                    <TableCell align="center"><strong>Period</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  <TableRow>
+                    <TableCell><strong>M.U. (Meetups)</strong></TableCell>
+                    <TableCell align="center">
+                      <Chip label={metricsData.totalMeetups} color="primary" />
+                    </TableCell>
+                    <TableCell align="center">
+                      {period.charAt(0).toUpperCase() + period.slice(1)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>B.C. (BizConnect)</strong></TableCell>
+                    <TableCell align="center">
+                      <Chip label={metricsData.totalBizConnect} color="secondary" />
+                    </TableCell>
+                    <TableCell align="center">
+                      {period.charAt(0).toUpperCase() + period.slice(1)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>B.W. (BizWin)</strong></TableCell>
+                    <TableCell align="center">
+                      <Typography variant="subtitle1" fontWeight="bold" color="success.main">
+                        {formatCurrency(metricsData.totalBizWinAmount)}
+                      </Typography>
+                    </TableCell>
+                    <TableCell align="center">
+                      {period.charAt(0).toUpperCase() + period.slice(1)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>VISITOR (Invitations)</strong></TableCell>
+                    <TableCell align="center">
+                      <Chip label={metricsData.totalVisitorInvitations} color="warning" />
+                    </TableCell>
+                    <TableCell align="center">
+                      {period.charAt(0).toUpperCase() + period.slice(1)}
+                    </TableCell>
+                  </TableRow>
+                  <TableRow>
+                    <TableCell><strong>EVE (Events)</strong></TableCell>
+                    <TableCell align="center">
+                      <Chip label={metricsData.totalEvents} color="info" />
+                    </TableCell>
+                    <TableCell align="center">
+                      {period.charAt(0).toUpperCase() + period.slice(1)}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </TabPanel>
+        )}
       </Box>
     </Box>
   );

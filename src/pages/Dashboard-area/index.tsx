@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Box,
   Grid,
@@ -17,92 +17,77 @@ import {
   Chip,
   LinearProgress,
   Avatar,
-  AvatarGroup,
+  CircularProgress,
+  Alert,
+  TextField,
+  Button,
+  Stack,
+  MenuItem,
 } from "@mui/material";
 import {
-  TrendingUp,
-  TrendingDown,
-  Remove,
   Groups,
   Handshake,
   EmojiEvents,
   Visibility,
-  Event,
+  Download,
   People,
 } from "@mui/icons-material";
 import { getUserFromLocalStorage } from "../../api/auth";
+import { useParams } from "react-router-dom";
+import { useVisibility } from "../../context/VisibilityContext";
+import axiosInstance from "../../axiosInstance";
+import { generateUserMetricsReport, generateAreaMetricsReport } from "../../utils/excelReportGenerator";
 
-// Mock data - will be replaced with real API calls
-const mockPerformanceData = {
-  area: {
-    name: "Andheri Area",
-    zone: "Mumbai Zone",
-    totalDCPs: 4,
-    totalCoreGroups: 8,
-    totalMembers: 180,
-  },
-  overall: {
-    meetups: { total: 58, offline: 42, digital: 16 },
-    bizConnect: { total: 98, offline: 71, digital: 27 },
-    bizWin: { total: 750000, offline: 520000, digital: 230000 },
-    visitor: { total: 34, offline: 29, digital: 5 },
-    events: { total: 22, offline: 14, digital: 8 },
-  },
-  dcpGroups: [
-    {
-      id: 1,
-      name: "DCP 1 - Tech & IT",
-      leader: "Rajesh Kumar",
-      coreGroups: 2,
-      members: 48,
-      performanceScore: 92,
-      trend: "up",
-      commission: 42000,
-    },
-    {
-      id: 2,
-      name: "DCP 2 - Finance & Banking",
-      leader: "Priya Sharma",
-      coreGroups: 2,
-      members: 45,
-      performanceScore: 88,
-      trend: "up",
-      commission: 38000,
-    },
-    {
-      id: 3,
-      name: "DCP 3 - Real Estate",
-      leader: "Amit Patel",
-      coreGroups: 2,
-      members: 42,
-      performanceScore: 85,
-      trend: "stable",
-      commission: 35000,
-    },
-    {
-      id: 4,
-      name: "DCP 4 - Healthcare",
-      leader: "Dr. Sunita Reddy",
-      coreGroups: 2,
-      members: 45,
-      performanceScore: 89,
-      trend: "up",
-      commission: 39000,
-    },
-  ],
-  topPerformers: [
-    { name: "Core Group Alpha", dcp: "DCP 1", score: 95, members: 24 },
-    { name: "Core Group Beta", dcp: "DCP 2", score: 91, members: 22 },
-    { name: "Core Group Gamma", dcp: "DCP 1", score: 89, members: 24 },
-  ],
-  monthlyTrend: {
-    meetups: "+15%",
-    bizConnect: "+22%",
-    bizWin: "+28%",
-    visitor: "+10%",
-    events: "+18%",
-  },
-};
+interface AreaMetrics {
+  bizWinTransactions: {
+    total: number;
+    given: number;
+    received: number;
+    totalAmount: number;
+    givenAmount: number;
+    receivedAmount: number;
+  };
+  bizConnectMeetups: {
+    total: number;
+    given: number;
+    received: number;
+  };
+  meetups: {
+    total: number;
+  };
+  visitorInvitations: {
+    total: number;
+  };
+  memberReferrals: {
+    total: number;
+  };
+  userCount: number;
+}
+
+interface AreaData {
+  _id: string;
+  areaName: string;
+  areaCode: string;
+  status: string;
+  zoneId: {
+    zoneName: string;
+  };
+  areaFranchise?: {
+    fname: string;
+    lname: string;
+  };
+  dcps?: Array<{
+    _id: string;
+    fname: string;
+    lname: string;
+    email: string;
+  }>;
+  coreGroups?: Array<{
+    _id: string;
+    groupName: string;
+    memberCount: number;
+  }>;
+}
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -126,18 +111,202 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const DashboardArea: React.FC = () => {
-  const user = getUserFromLocalStorage();
+  const user = React.useMemo(() => getUserFromLocalStorage(), []);
+  const { areaId } = useParams();
+  const { setSidebarAndHeaderVisibility } = useVisibility();
   const [tabValue, setTabValue] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [areaData, setAreaData] = useState<AreaData | null>(null);
+  const [metrics, setMetrics] = useState<AreaMetrics | null>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [userMetrics, setUserMetrics] = useState<any>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [dateRange, setDateRange] = useState({
+    startDate: "",
+    endDate: "",
+  });
+  const [membershipFilter, setMembershipFilter] = useState<string>("all");
+  const [isRefetching, setIsRefetching] = useState(false);
+
+  const dataLoadedRef = useRef(false);
+
+  useEffect(() => {
+    setSidebarAndHeaderVisibility(true);
+  }, [setSidebarAndHeaderVisibility]);
+
+  const fetchAreaData = React.useCallback(async () => {
+    let targetAreaId = areaId;
+
+    // If no areaId in params, check if user is Area Franchise and has areaId
+    if (!targetAreaId && user?.role === 'area-franchise') {
+      const franchiseUser = user as any;
+      if (franchiseUser.areaId) {
+        targetAreaId = typeof franchiseUser.areaId === 'object' ? franchiseUser.areaId._id : franchiseUser.areaId;
+      }
+    }
+
+    if (!targetAreaId) {
+      setError("Area ID is required");
+      setLoading(false);
+      return;
+    }
+
+    // Determine if this is an initial load or a refresh using ref
+    const isInitialLoad = !dataLoadedRef.current;
+
+    try {
+      if (isInitialLoad) {
+        setLoading(true);
+      } else {
+        setIsRefetching(true);
+      }
+      setError(null);
+
+      // First, fetch the area details to get the areaName
+      const areaResponse = await axiosInstance.get(`/franchise/area/${targetAreaId}`);
+      const area: AreaData = areaResponse.data.data;
+      setAreaData(area);
+
+      console.log("📍 Area Data:", area);
+
+      // Extract clean area name (remove city suffix if present)
+      // e.g., "Jawahar Nagar (Vadodara)" -> "Jawahar Nagar"
+      const cleanAreaName = area.areaName.split(' (')[0].trim();
+      console.log("🔍 Clean Area Name for Query:", cleanAreaName);
+
+      // Then fetch metrics for this business area
+      const metricsResponse = await axiosInstance.get(
+        `/franchise/mf/area-metrics`,
+        {
+          params: {
+            businessArea: cleanAreaName,
+            startDate: dateRange.startDate,
+            endDate: dateRange.endDate,
+          },
+        }
+      );
+
+      const metricsData: AreaMetrics = metricsResponse.data.data.metrics;
+      setMetrics(metricsData);
+
+      // Mark data as loaded so subsequent fetches are treated as refetches
+      dataLoadedRef.current = true;
+
+      console.log("📊 Area Metrics:", metricsData);
+
+      // Fetch users in this area
+      fetchAreaUsers(cleanAreaName);
+    } catch (err: any) {
+      console.error("Error fetching area data:", err);
+      setError(
+        err?.response?.data?.message ||
+        "Failed to fetch area data. Please try again."
+      );
+    } finally {
+      setLoading(false);
+      setIsRefetching(false);
+    }
+  }, [areaId, dateRange, user]);
+
+  const fetchAreaUsers = async (areaName: string) => {
+    try {
+      setLoadingUsers(true);
+      const response = await axiosInstance.get("/users/getallusers", {
+        params: {
+          businessArea: areaName,
+        },
+      });
+
+      console.log("👥 Area Users:", response.data);
+      setUsers(response.data.data?.users || []);
+    } catch (err: any) {
+      console.error("Error fetching area users:", err);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const fetchUserMetrics = async (userId: string) => {
+    try {
+      setLoadingMetrics(true);
+
+      // Fetch user referral and TYFCB stats (combined endpoint)
+      const response = await axiosInstance.get(`/dashboard/user-referralstate/${userId}`, {
+        params: {
+          startDate: dateRange.startDate,
+          endDate: dateRange.endDate,
+        }
+      });
+
+      const data = response.data.data || {};
+
+      const metrics = {
+        referrals: {
+          referralsGiven: data.givenReferrals || 0,
+          referralsReceived: data.receivedReferrals || 0,
+        },
+        tyfcb: {
+          givenCount: data.givenTYFCB || 0,
+          receivedCount: data.receivedTYFCB || 0,
+          givenAmount: data.givenTYFCBAmount || 0,
+          receivedAmount: data.receivedTYFCBAmount || 0,
+          totalAmount: data.totalTYFCBAmount || 0,
+        },
+        meetups: data.meetupsCount || 0,
+        visitorInvitations: data.visitorInvitations || 0,
+        memberReferrals: data.memberReferrals || 0,
+      };
+
+      console.log("✅ User Metrics:", metrics);
+      setUserMetrics(metrics);
+    } catch (err: any) {
+      console.error("Error fetching user metrics:", err);
+      setUserMetrics(null);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  };
+
+  const handleUserClick = (userData: any) => {
+    setSelectedUser(userData);
+    fetchUserMetrics(userData.user.userId);
+    // Scroll to top to see the updated metrics cards
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleDownload = async () => {
+    if (selectedUser && userMetrics) {
+      // User-specific download with detailed transaction data
+      await generateUserMetricsReport(
+        selectedUser.user.userId,
+        selectedUser.user.name,
+        userMetrics,
+        selectedUser.user.membershipType,
+        dateRange
+      );
+    } else if (metrics && areaData) {
+      // Area-wide download
+      generateAreaMetricsReport(areaData.areaName, metrics);
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedUser(null);
+    setUserMetrics(null);
+  };
+
+  useEffect(() => {
+    fetchAreaData();
+  }, [fetchAreaData]);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue);
   };
 
-  const getTrendIcon = (trend: string) => {
-    if (trend === "up") return <TrendingUp color="success" />;
-    if (trend === "down") return <TrendingDown color="error" />;
-    return <Remove color="disabled" />;
-  };
+
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -147,61 +316,260 @@ const DashboardArea: React.FC = () => {
     }).format(amount);
   };
 
+  // State to store membership-filtered metrics
+  const [filteredMetrics, setFilteredMetrics] = useState<AreaMetrics | null>(null);
+
+  // Fetch filtered metrics when membership filter changes
+  useEffect(() => {
+    const fetchFilteredMetrics = async () => {
+      if (membershipFilter === "all" || !areaData || !metrics) {
+        setFilteredMetrics(null);
+        return;
+      }
+
+      try {
+
+        // Filter users by membership type
+        const filteredUsers = users.filter(
+          (userData: any) => userData.user.membershipType === membershipFilter
+        );
+
+        if (filteredUsers.length === 0) {
+          setFilteredMetrics({
+            bizWinTransactions: { total: 0, given: 0, received: 0, totalAmount: 0, givenAmount: 0, receivedAmount: 0 },
+            bizConnectMeetups: { total: 0, given: 0, received: 0 },
+            meetups: { total: 0 },
+            visitorInvitations: { total: 0 },
+            memberReferrals: { total: 0 },
+            userCount: 0,
+          });
+          return;
+        }
+
+        // Fetch metrics for each filtered user and aggregate
+        const userMetricsPromises = filteredUsers.map((userData: any) =>
+          axiosInstance.get(`/dashboard/user-referralstate/${userData.user.userId}`, {
+            params: {
+              startDate: dateRange.startDate,
+              endDate: dateRange.endDate,
+            }
+          }).catch(() => null)
+        );
+
+        const userMetricsResponses = await Promise.all(userMetricsPromises);
+
+        // Aggregate metrics
+        let totalBizConnectGiven = 0;
+        let totalBizConnectReceived = 0;
+        let totalBizWinGiven = 0;
+        let totalBizWinReceived = 0;
+        let totalBizWinGivenAmount = 0;
+        let totalBizWinReceivedAmount = 0;
+        let totalMeetups = 0;
+        let totalVisitorInvitations = 0;
+        let totalMemberReferrals = 0;
+
+        userMetricsResponses.forEach((response) => {
+          if (response && response.data && response.data.data) {
+            const data = response.data.data;
+            totalBizConnectGiven += data.givenReferrals || 0;
+            totalBizConnectReceived += data.receivedReferrals || 0;
+            totalBizWinGiven += data.givenTYFCB || 0;
+            totalBizWinReceived += data.receivedTYFCB || 0;
+            totalBizWinGivenAmount += data.givenTYFCBAmount || 0;
+            totalBizWinReceivedAmount += data.receivedTYFCBAmount || 0;
+            totalMeetups += data.meetupsCount || 0;
+            totalVisitorInvitations += data.visitorInvitations || 0;
+            totalMemberReferrals += data.memberReferrals || 0;
+          }
+        });
+
+        setFilteredMetrics({
+          bizWinTransactions: {
+            total: totalBizWinGiven + totalBizWinReceived,
+            given: totalBizWinGiven,
+            received: totalBizWinReceived,
+            totalAmount: totalBizWinGivenAmount + totalBizWinReceivedAmount,
+            givenAmount: totalBizWinGivenAmount,
+            receivedAmount: totalBizWinReceivedAmount,
+          },
+          bizConnectMeetups: {
+            total: totalBizConnectGiven + totalBizConnectReceived,
+            given: totalBizConnectGiven,
+            received: totalBizConnectReceived,
+          },
+          meetups: {
+            total: totalMeetups,
+          },
+          visitorInvitations: {
+            total: totalVisitorInvitations,
+          },
+          memberReferrals: {
+            total: totalMemberReferrals,
+          },
+          userCount: filteredUsers.length,
+        });
+      } catch (err) {
+        console.error("Error fetching filtered metrics:", err);
+      }
+    };
+
+    fetchFilteredMetrics();
+  }, [membershipFilter, users, areaData, metrics, dateRange]);
+
+  const displayMetrics = filteredMetrics || metrics;
+
+  if (loading) {
+    return (
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          minHeight: "80vh",
+        }}
+      >
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
+
+  if (!areaData || !metrics) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="warning">No data available for this area.</Alert>
+      </Box>
+    );
+  }
+
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, position: 'relative' }}>
+      {isRefetching && <LinearProgress sx={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }} />}
       {/* Welcome Section */}
-      <Typography variant="h4" gutterBottom>
-        Welcome, {user?.fname} {user?.lname}
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        Area Franchise Partner Dashboard - {mockPerformanceData.area.name}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
-        Zone: {mockPerformanceData.area.zone} | DCPs: {mockPerformanceData.area.totalDCPs} | Core Groups:{" "}
-        {mockPerformanceData.area.totalCoreGroups} | Members: {mockPerformanceData.area.totalMembers}
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Welcome, {user?.fname} {user?.lname}
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+            Area Franchise Partner Dashboard - {areaData.areaName}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Zone: {areaData.zoneId?.zoneName || "N/A"} | DCPs: {areaData.dcps?.length || 0} | Core Groups:{" "}
+            {areaData.coreGroups?.length || 0} | Members: {displayMetrics?.userCount || 0}
+          </Typography>
+        </Box>
+        {selectedUser && (
+          <Box>
+            <Chip
+              label={`Viewing: ${selectedUser.user.name}`}
+              onDelete={handleClearSelection}
+              color="primary"
+              sx={{ fontSize: '0.9rem', py: 2 }}
+            />
+          </Box>
+        )}
+      </Box>
+
+      {/* Date Filter & Download */}
+      <Box display="flex" justifyContent="flex-end" mb={3}>
+        <Stack direction="row" spacing={2} alignItems="center">
+          <TextField
+            select
+            label="Membership Type"
+            size="small"
+            value={membershipFilter}
+            onChange={(e) => setMembershipFilter(e.target.value)}
+            sx={{ minWidth: 180 }}
+          >
+            <MenuItem value="all">All Memberships</MenuItem>
+            <MenuItem value="Core Membership">Core Membership</MenuItem>
+            <MenuItem value="Flagship Membership">Flagship Membership</MenuItem>
+            <MenuItem value="Digital Membership">Digital Membership</MenuItem>
+            <MenuItem value="Industrial Membership">Industrial Membership</MenuItem>
+          </TextField>
+          <TextField
+            label="Start Date"
+            type="date"
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            value={dateRange.startDate}
+            onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })}
+          />
+          <TextField
+            label="End Date"
+            type="date"
+            size="small"
+            InputLabelProps={{ shrink: true }}
+            value={dateRange.endDate}
+            onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })}
+          />
+          <Button
+            variant="outlined"
+            startIcon={<Download />}
+            onClick={handleDownload}
+          >
+            Download Report
+          </Button>
+        </Stack>
+      </Box>
 
       {/* Key Metrics Overview */}
       <Grid container spacing={3} mt={2}>
         {/* M.U. - Meetups */}
         <Grid item xs={12} md={6} lg={2.4}>
-          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white" }}>
+          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "white", position: 'relative' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <Groups />
-                <Chip label={mockPerformanceData.monthlyTrend.meetups} size="small" color="success" />
+                {loadingMetrics && selectedUser && (
+                  <CircularProgress size={20} sx={{ color: 'white' }} />
+                )}
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.meetups.total}
+                {selectedUser && userMetrics ? userMetrics.meetups : displayMetrics?.meetups.total}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 M.U. (Meetups)
               </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.meetups.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.meetups.digital}</span>
-              </Box>
+              <Typography variant="caption" sx={{ opacity: 0.7, mt: 1, display: "block" }}>
+                All time
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
 
         {/* B.C. - BizConnect */}
         <Grid item xs={12} md={6} lg={2.4}>
-          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", color: "white" }}>
+          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)", color: "white", position: 'relative' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <Handshake />
-                <Chip label={mockPerformanceData.monthlyTrend.bizConnect} size="small" color="success" />
+                {loadingMetrics && selectedUser && (
+                  <CircularProgress size={20} sx={{ color: 'white' }} />
+                )}
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.bizConnect.total}
+                {selectedUser && userMetrics
+                  ? (userMetrics.referrals.referralsGiven + userMetrics.referrals.referralsReceived)
+                  : displayMetrics?.bizConnectMeetups.total}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 B.C. (BizConnect)
               </Typography>
               <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.bizConnect.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.bizConnect.digital}</span>
+                <span>Given: {selectedUser && userMetrics ? userMetrics.referrals.referralsGiven : displayMetrics?.bizConnectMeetups.given}</span>
+                <span>Received: {selectedUser && userMetrics ? userMetrics.referrals.referralsReceived : displayMetrics?.bizConnectMeetups.received}</span>
               </Box>
             </CardContent>
           </Card>
@@ -209,229 +577,319 @@ const DashboardArea: React.FC = () => {
 
         {/* B.W. - BizWin */}
         <Grid item xs={12} md={6} lg={2.4}>
-          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)", color: "white" }}>
+          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)", color: "white", position: 'relative' }}>
             <CardContent>
               <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
                 <EmojiEvents />
-                <Chip label={mockPerformanceData.monthlyTrend.bizWin} size="small" color="success" />
+                {loadingMetrics && selectedUser && (
+                  <CircularProgress size={20} sx={{ color: 'white' }} />
+                )}
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {formatCurrency(mockPerformanceData.overall.bizWin.total)}
+                {selectedUser && userMetrics
+                  ? formatCurrency(userMetrics.tyfcb.totalAmount)
+                  : formatCurrency(displayMetrics?.bizWinTransactions.totalAmount || 0)}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 B.W. (BizWin)
               </Typography>
               <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {formatCurrency(mockPerformanceData.overall.bizWin.offline)}</span>
-                <span>Digital: {formatCurrency(mockPerformanceData.overall.bizWin.digital)}</span>
+                <span>Given: {selectedUser && userMetrics ? formatCurrency(userMetrics.tyfcb.givenAmount) : formatCurrency(displayMetrics?.bizWinTransactions.givenAmount || 0)}</span>
+                <span>Received: {selectedUser && userMetrics ? formatCurrency(userMetrics.tyfcb.receivedAmount) : formatCurrency(displayMetrics?.bizWinTransactions.receivedAmount || 0)}</span>
               </Box>
             </CardContent>
           </Card>
         </Grid>
 
         {/* VISITOR - Invitations */}
-        <Grid item xs={12} md={6} lg={2.4}>
-          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #fa709a 0%, #fee140 100%)", color: "white" }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                <Visibility />
-                <Chip label={mockPerformanceData.monthlyTrend.visitor} size="small" color="success" />
-              </Box>
-              <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.visitor.total}
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                VISITOR (Invitations)
-              </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.visitor.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.visitor.digital}</span>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+        {(!selectedUser || selectedUser.user.membershipType !== "Digital Membership") && (
+          <Grid item xs={12} md={6} lg={2.4}>
+            <Card sx={{ height: "100%", background: "linear-gradient(135deg, #fa709a 0%, #fee140 100%)", color: "white" }}>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                  <Visibility />
+                  {loadingMetrics && selectedUser && (
+                    <CircularProgress size={20} sx={{ color: 'white' }} />
+                  )}
+                </Box>
+                <Typography variant="h4" fontWeight="bold">
+                  {selectedUser && userMetrics ? userMetrics.visitorInvitations : displayMetrics?.visitorInvitations.total}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  VISITOR (Invitations)
+                </Typography>
+                <Typography variant="caption" sx={{ opacity: 0.7, mt: 1, display: "block" }}>
+                  All time
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
 
-        {/* EVE - Events */}
-        <Grid item xs={12} md={6} lg={2.4}>
-          <Card sx={{ height: "100%", background: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)", color: "white" }}>
-            <CardContent>
-              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-                <Event />
-                <Chip label={mockPerformanceData.monthlyTrend.events} size="small" color="success" />
-              </Box>
-              <Typography variant="h4" fontWeight="bold">
-                {mockPerformanceData.overall.events.total}
-              </Typography>
-              <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                EVE (Events)
-              </Typography>
-              <Box mt={2} display="flex" justifyContent="space-between" sx={{ fontSize: "0.75rem" }}>
-                <span>Offline: {mockPerformanceData.overall.events.offline}</span>
-                <span>Digital: {mockPerformanceData.overall.events.digital}</span>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* Member Referrals */}
+        {(!selectedUser || selectedUser.user.membershipType !== "Digital Membership") && (
+          <Grid item xs={12} md={6} lg={2.4}>
+            <Card sx={{ height: "100%", background: "linear-gradient(135deg, #30cfd0 0%, #330867 100%)", color: "white" }}>
+              <CardContent>
+                <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+                  <People />
+                  {loadingMetrics && selectedUser && (
+                    <CircularProgress size={20} sx={{ color: 'white' }} />
+                  )}
+                </Box>
+                <Typography variant="h4" fontWeight="bold">
+                  {selectedUser && userMetrics ? userMetrics.memberReferrals : displayMetrics?.memberReferrals.total}
+                </Typography>
+                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                  Member Referrals
+                </Typography>
+                <Typography variant="caption" sx={{ opacity: 0.7, mt: 1, display: "block" }}>
+                  New members referred
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        )}
       </Grid>
 
       {/* Tabs for detailed views */}
       <Box sx={{ mt: 4 }}>
         <Tabs value={tabValue} onChange={handleTabChange} aria-label="dashboard tabs">
+          <Tab label="Area Summary" />
+          <Tab label="Area Members" />
           <Tab label="DCP Groups" />
-          <Tab label="Top Performers" />
-          <Tab label="Commission Details" />
+          <Tab label="Core Groups" />
         </Tabs>
 
-        {/* DCP Groups Tab */}
+        {/* Area Summary Tab */}
         <TabPanel value={tabValue} index={0}>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell><strong>DCP Group</strong></TableCell>
-                  <TableCell><strong>Leader</strong></TableCell>
-                  <TableCell align="center"><strong>Core Groups</strong></TableCell>
-                  <TableCell align="center"><strong>Members</strong></TableCell>
-                  <TableCell align="center"><strong>Performance Score</strong></TableCell>
-                  <TableCell align="center"><strong>Trend</strong></TableCell>
-                  <TableCell align="right"><strong>Commission</strong></TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {mockPerformanceData.dcpGroups.map((dcp) => (
-                  <TableRow key={dcp.id} hover>
-                    <TableCell>{dcp.name}</TableCell>
-                    <TableCell>
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Avatar sx={{ width: 32, height: 32 }}>{dcp.leader[0]}</Avatar>
-                        {dcp.leader}
-                      </Box>
-                    </TableCell>
-                    <TableCell align="center">{dcp.coreGroups}</TableCell>
-                    <TableCell align="center">{dcp.members}</TableCell>
-                    <TableCell align="center">
-                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                        <Box sx={{ width: "100%", mr: 1 }}>
-                          <LinearProgress
-                            variant="determinate"
-                            value={dcp.performanceScore}
-                            color={dcp.performanceScore > 85 ? "success" : "primary"}
-                          />
-                        </Box>
-                        <Typography variant="body2">{dcp.performanceScore}%</Typography>
-                      </Box>
-                    </TableCell>
-                    <TableCell align="center">{getTrendIcon(dcp.trend)}</TableCell>
-                    <TableCell align="right">{formatCurrency(dcp.commission)}</TableCell>
-                  </TableRow>
-                ))}
-                <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                  <TableCell colSpan={6} align="right"><strong>Total Commission:</strong></TableCell>
-                  <TableCell align="right">
-                    <strong>{formatCurrency(mockPerformanceData.dcpGroups.reduce((acc, d) => acc + d.commission, 0))}</strong>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </TabPanel>
-
-        {/* Top Performers Tab */}
-        <TabPanel value={tabValue} index={1}>
           <Grid container spacing={3}>
-            {mockPerformanceData.topPerformers.map((performer, index) => (
-              <Grid item xs={12} md={4} key={index}>
-                <Card>
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Area Information
+                  </Typography>
+                  <Box mt={2}>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Area Name:</Typography>
+                      <Typography fontWeight="bold">{areaData.areaName}</Typography>
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Area Code:</Typography>
+                      <Typography fontWeight="bold">{areaData.areaCode}</Typography>
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Zone:</Typography>
+                      <Typography fontWeight="bold">{areaData.zoneId?.zoneName || "N/A"}</Typography>
+                    </Box>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Status:</Typography>
                       <Chip
-                        label={`#${index + 1}`}
-                        color={index === 0 ? "success" : index === 1 ? "primary" : "default"}
+                        label={areaData.status}
+                        color={areaData.status === "active" ? "success" : "default"}
                         size="small"
                       />
-                      <Typography variant="h5" fontWeight="bold">
-                        {performer.score}%
-                      </Typography>
                     </Box>
-                    <Typography variant="h6" gutterBottom>
-                      {performer.name}
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Under: {performer.dcp}
-                    </Typography>
-                    <Box mt={2}>
-                      <Box display="flex" alignItems="center" gap={1} mb={1}>
-                        <People fontSize="small" />
-                        <Typography variant="body2">
-                          Members: <strong>{performer.members}</strong>
-                        </Typography>
-                      </Box>
-                      <AvatarGroup max={4}>
-                        <Avatar sx={{ width: 28, height: 28 }}>A</Avatar>
-                        <Avatar sx={{ width: 28, height: 28 }}>B</Avatar>
-                        <Avatar sx={{ width: 28, height: 28 }}>C</Avatar>
-                        <Avatar sx={{ width: 28, height: 28 }}>D</Avatar>
-                      </AvatarGroup>
+                    <Box display="flex" justifyContent="space-between" mb={2}>
+                      <Typography>Total Members:</Typography>
+                      <Typography fontWeight="bold">{displayMetrics?.userCount}</Typography>
                     </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Area Franchise Partner
+                  </Typography>
+                  <Box mt={2}>
+                    {areaData.areaFranchise ? (
+                      <>
+                        <Box display="flex" alignItems="center" gap={2} mb={2}>
+                          <Avatar sx={{ width: 48, height: 48 }}>
+                            {areaData.areaFranchise.fname?.[0] || "A"}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body1" fontWeight="bold">
+                              {areaData.areaFranchise.fname} {areaData.areaFranchise.lname}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Area Franchise Partner
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </>
+                    ) : (
+                      <Alert severity="info">No Area Franchise Partner assigned yet</Alert>
+                    )}
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
           </Grid>
         </TabPanel>
 
-        {/* Commission Details Tab */}
+        {/* Area Members Tab */}
+        <TabPanel value={tabValue} index={1}>
+          {loadingUsers ? (
+            <Box display="flex" justifyContent="center" p={4}>
+              <CircularProgress />
+            </Box>
+          ) : (() => {
+            // Filter users based on membership type
+            const filteredUsers = membershipFilter === "all"
+              ? users
+              : users.filter((userData: any) => userData.user.membershipType === membershipFilter);
+
+            return filteredUsers.length > 0 ? (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell><strong>Member</strong></TableCell>
+                      <TableCell><strong>Company</strong></TableCell>
+                      <TableCell><strong>Business</strong></TableCell>
+                      <TableCell><strong>Membership</strong></TableCell>
+                      <TableCell align="center"><strong>Payment Status</strong></TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredUsers.map((userData: any) => {
+                      const u = userData.user;
+                      const payment = userData.payment;
+                      return (
+                        <TableRow
+                          key={u.userId}
+                          hover
+                          onClick={() => handleUserClick(userData)}
+                          sx={{ cursor: 'pointer' }}
+                        >
+                          <TableCell>
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Avatar src={u.avatar} sx={{ width: 32, height: 32 }}>
+                                {u.name?.[0] || "U"}
+                              </Avatar>
+                              <Box>
+                                <Typography variant="body2" fontWeight="bold">
+                                  {u.name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {u.city}, {u.state}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </TableCell>
+                          <TableCell>{u.companyName || "-"}</TableCell>
+                          <TableCell>{u.myBusiness || u.industry || "-"}</TableCell>
+                          <TableCell>
+                            <Chip
+                              label={u.membershipType || "N/A"}
+                              color={
+                                u.membershipType === "Core Membership" ? "success" :
+                                  u.membershipType === "Flagship Membership" ? "primary" :
+                                    u.membershipType === "Digital Membership" ? "info" :
+                                      "default"
+                              }
+                              size="small"
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            {payment?.isFullyPaid ? (
+                              <Chip label="Paid" color="success" size="small" />
+                            ) : (
+                              <Chip
+                                label={`₹${payment?.pendingAmount?.toLocaleString() || 0} Pending`}
+                                color="warning"
+                                size="small"
+                              />
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            ) : (
+              <Alert severity="info">No members found matching the selected membership type</Alert>
+            );
+          })()}
+        </TabPanel>
+
+        {/* DCP Groups Tab */}
         <TabPanel value={tabValue} index={2}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Commission Breakdown
-                  </Typography>
-                  <Box mt={2}>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Offline Members (7%):</Typography>
-                      <Typography fontWeight="bold">{formatCurrency(95000)}</Typography>
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Digital Members (30%):</Typography>
-                      <Typography fontWeight="bold">{formatCurrency(59000)}</Typography>
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" sx={{ pt: 2, borderTop: "2px solid #e0e0e0" }}>
-                      <Typography variant="h6">Total Commission:</Typography>
-                      <Typography variant="h6" fontWeight="bold" color="primary">
-                        {formatCurrency(154000)}
+          {areaData.dcps && areaData.dcps.length > 0 ? (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell><strong>DCP Name</strong></TableCell>
+                    <TableCell><strong>Email</strong></TableCell>
+                    <TableCell align="center"><strong>Status</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {areaData.dcps.map((dcp) => (
+                    <TableRow key={dcp._id} hover>
+                      <TableCell>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Avatar sx={{ width: 32, height: 32 }}>
+                            {dcp.fname?.[0] || "D"}
+                          </Avatar>
+                          {dcp.fname} {dcp.lname}
+                        </Box>
+                      </TableCell>
+                      <TableCell>{dcp.email}</TableCell>
+                      <TableCell align="center">
+                        <Chip label="Active" color="success" size="small" />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Alert severity="info">No DCP Groups assigned to this area yet</Alert>
+          )}
+        </TabPanel>
+
+        {/* Core Groups Tab */}
+        <TabPanel value={tabValue} index={3}>
+          {areaData.coreGroups && areaData.coreGroups.length > 0 ? (
+            <Grid container spacing={3}>
+              {areaData.coreGroups.map((coreGroup, index) => (
+                <Grid item xs={12} md={4} key={coreGroup._id}>
+                  <Card>
+                    <CardContent>
+                      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                        <Chip
+                          label={`#${index + 1}`}
+                          color="primary"
+                          size="small"
+                        />
+                      </Box>
+                      <Typography variant="h6" gutterBottom>
+                        {coreGroup.groupName}
                       </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
+                      <Box mt={2}>
+                        <Box display="flex" alignItems="center" gap={1} mb={1}>
+                          <People fontSize="small" />
+                          <Typography variant="body2">
+                            Members: <strong>{coreGroup.memberCount || 0}</strong>
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
             </Grid>
-            <Grid item xs={12} md={6}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Payout Status
-                  </Typography>
-                  <Box mt={2}>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Pending Payouts:</Typography>
-                      <Chip label={formatCurrency(32000)} color="warning" />
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Completed Payouts:</Typography>
-                      <Chip label={formatCurrency(122000)} color="success" />
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Next Payout Date:</Typography>
-                      <Typography fontWeight="bold">Dec 15, 2025</Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+          ) : (
+            <Alert severity="info">No Core Groups assigned to this area yet</Alert>
+          )}
         </TabPanel>
       </Box>
     </Box>

@@ -44,6 +44,17 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({ allowedRoles, redirectT
     return <Navigate to="/dashboard-core" replace />;
   }
 
+  // ✅ Franchise Partner Redirects
+  if (role === "master-franchise" || role === "area-franchise") {
+    return <Navigate to="/dashboard-franchise" replace />;
+  }
+  if (role === "cgc") {
+    return <Navigate to="/dashboard-cgc" replace />;
+  }
+  if (role === "dcp") {
+    return <Navigate to="/dashboard-dcp" replace />;
+  }
+
   // ✅ Deny access if role is not allowed
   return <Navigate to={redirectTo} replace />;
 };

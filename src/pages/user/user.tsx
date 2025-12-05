@@ -141,8 +141,8 @@ const CustomersPage: React.FC = () => {
         const users = Array.isArray(usersResponse.data.data.users)
           ? usersResponse.data.data.users
           : Array.isArray(usersResponse.data.data)
-          ? usersResponse.data.data
-          : [];
+            ? usersResponse.data.data
+            : [];
         const mappedCustomers = users.map((item: any) => {
           const user = item.user || item;
           const [fname, ...lnameParts] = (user.name || "").split(" ");
@@ -176,7 +176,7 @@ const CustomersPage: React.FC = () => {
               "https://icon-library.com/images/anonymous-avatar-icon/anonymous-avatar-icon-25.jpg",
             isEmailVerified: user.isEmailVerified || false,
             username: user.username || "",
-            profile: user.profile || undefined,
+            profile: user.profile?._id || user.profile || undefined,
             connections: user.connections || [],
             isActive: user.isActive || false,
             isLogin: user.isLogin || 0,
@@ -378,13 +378,13 @@ const CustomersPage: React.FC = () => {
         referBy: formData.referBy || undefined,
         ...(isDigitalMembership
           ? {
-              city: formData.city || undefined,
-              state: formData.state || undefined,
-              country: formData.country || undefined,
-            }
+            city: formData.city || undefined,
+            state: formData.state || undefined,
+            country: formData.country || undefined,
+          }
           : {
-              region: formData.region || undefined,
-            }),
+            region: formData.region || undefined,
+          }),
         membershipType: formData.membershipType,
         role: formData.role,
         username: formData.username || undefined,
@@ -461,13 +461,13 @@ const CustomersPage: React.FC = () => {
         referBy: formData.referBy || undefined,
         ...(isDigitalMembership
           ? {
-              city: formData.city || undefined,
-              state: formData.state || undefined,
-              country: formData.country || undefined,
-            }
+            city: formData.city || undefined,
+            state: formData.state || undefined,
+            country: formData.country || undefined,
+          }
           : {
-              region: formData.region || undefined,
-            }),
+            region: formData.region || undefined,
+          }),
         membershipType: formData.membershipType,
         role: formData.role,
         username: formData.username || undefined,
@@ -631,7 +631,7 @@ const CustomersPage: React.FC = () => {
         customer.membershipType === selectedMembershipType) &&
       (selectedPaymentVerificationStatus === "" ||
         customer.paymentVerificationStatus?.toString() ===
-          selectedPaymentVerificationStatus)
+        selectedPaymentVerificationStatus)
   );
 
   const csvData = [
@@ -703,9 +703,8 @@ const CustomersPage: React.FC = () => {
 
   return (
     <div
-      className={`w-full min-h-screen flex flex-col items-center ${
-        !isSidebarAndHeaderVisible ? "mt-0" : ""
-      }`}
+      className={`w-full min-h-screen flex flex-col items-center ${!isSidebarAndHeaderVisible ? "mt-0" : ""
+        }`}
     >
       {loading && (
         <p className="text-center text-blue-600 font-semibold">
@@ -876,9 +875,8 @@ const CustomersPage: React.FC = () => {
                             setFormData({ ...formData, email: e.target.value });
                           }}
                           onBlur={() => handleFieldBlur("email")}
-                          className={`mt-1 p-2 border ${
-                            errors.email ? "border-red-500" : "border-gray-300"
-                          } rounded-md w-full`}
+                          className={`mt-1 p-2 border ${errors.email ? "border-red-500" : "border-gray-300"
+                            } rounded-md w-full`}
                           required
                         />
                         {errors.email && (
@@ -902,9 +900,8 @@ const CustomersPage: React.FC = () => {
                             setFormData({ ...formData, mobile: value });
                           }}
                           onBlur={() => handleFieldBlur("mobile")}
-                          className={`mt-1 p-2 border ${
-                            errors.mobile ? "border-red-500" : "border-gray-300"
-                          } rounded-md w-full`}
+                          className={`mt-1 p-2 border ${errors.mobile ? "border-red-500" : "border-gray-300"
+                            } rounded-md w-full`}
                           required
                           maxLength={10}
                           inputMode="numeric"
@@ -934,11 +931,10 @@ const CustomersPage: React.FC = () => {
                             });
                           }}
                           onBlur={() => handleFieldBlur("username")}
-                          className={`mt-1 p-2 border ${
-                            errors.username
+                          className={`mt-1 p-2 border ${errors.username
                               ? "border-red-500"
                               : "border-gray-300"
-                          } rounded-md w-full`}
+                            } rounded-md w-full`}
                         />
                         {errors.username && (
                           <p className="text-red-500 text-sm">
@@ -1066,9 +1062,8 @@ const CustomersPage: React.FC = () => {
                               setFormData({ ...formData, city: e.target.value })
                             }
                             onBlur={() => handleFieldBlur("city")}
-                            className={`mt-1 p-2 border ${
-                              errors.city ? "border-red-500" : "border-gray-300"
-                            } rounded-md w-full`}
+                            className={`mt-1 p-2 border ${errors.city ? "border-red-500" : "border-gray-300"
+                              } rounded-md w-full`}
                             required
                           />
                           {errors.city && (
@@ -1091,11 +1086,10 @@ const CustomersPage: React.FC = () => {
                               })
                             }
                             onBlur={() => handleFieldBlur("state")}
-                            className={`mt-1 p-2 border ${
-                              errors.state
+                            className={`mt-1 p-2 border ${errors.state
                                 ? "border-red-500"
                                 : "border-gray-300"
-                            } rounded-md w-full`}
+                              } rounded-md w-full`}
                             required
                           />
                           {errors.state && (
@@ -1118,11 +1112,10 @@ const CustomersPage: React.FC = () => {
                               })
                             }
                             onBlur={() => handleFieldBlur("country")}
-                            className={`mt-1 p-2 border ${
-                              errors.country
+                            className={`mt-1 p-2 border ${errors.country
                                 ? "border-red-500"
                                 : "border-gray-300"
-                            } rounded-md w-full`}
+                              } rounded-md w-full`}
                             required
                           />
                           {errors.country && (
@@ -1143,9 +1136,8 @@ const CustomersPage: React.FC = () => {
                             setFormData({ ...formData, region: e.target.value })
                           }
                           onBlur={() => handleFieldBlur("region")}
-                          className={`mt-1 p-2 border ${
-                            errors.region ? "border-red-500" : "border-gray-300"
-                          } rounded-md w-full`}
+                          className={`mt-1 p-2 border ${errors.region ? "border-red-500" : "border-gray-300"
+                            } rounded-md w-full`}
                           required
                         >
                           <option value="">Select Region</option>
@@ -1239,9 +1231,8 @@ const CustomersPage: React.FC = () => {
                       <td className="border px-4 py-2">{customer.mobile}</td>
                       <td className="border px-4 py-2">
                         {customer.membershipType === "Digital Membership" ||
-                        customer.membershipType === "Digital Membership Trial"
-                          ? `${customer.city || ""}, ${customer.state || ""}, ${
-                              customer.country || ""
+                          customer.membershipType === "Digital Membership Trial"
+                          ? `${customer.city || ""}, ${customer.state || ""}, ${customer.country || ""
                             }`.replace(/^,\s*|,\s*$/g, "") || "-"
                           : customer.region || "-"}
                       </td>
@@ -1250,15 +1241,13 @@ const CustomersPage: React.FC = () => {
                         {coreMembers.find(
                           (member) => member._id === customer.referBy
                         )
-                          ? `${
-                              coreMembers.find(
-                                (member) => member._id === customer.referBy
-                              )?.fname
-                            } ${
-                              coreMembers.find(
-                                (member) => member._id === customer.referBy
-                              )?.lname
-                            }`
+                          ? `${coreMembers.find(
+                            (member) => member._id === customer.referBy
+                          )?.fname
+                          } ${coreMembers.find(
+                            (member) => member._id === customer.referBy
+                          )?.lname
+                          }`
                           : customer.referBy || "-"}
                       </td>
                       <td className="border px-4 py-2">

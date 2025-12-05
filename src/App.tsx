@@ -122,12 +122,16 @@ function App() {
 
           {/* New Hierarchy & Finance Routes */}
           <Route path="/hierarchy/zones" element={<ZoneList />} />
-          <Route path="/hierarchy/areas" element={<AreaList />} />
           <Route path="/hierarchy/zones/:id" element={<ZoneDetails />} />
-          <Route path="/hierarchy/franchise-partners" element={<FranchiseManagement />} />
           <Route path="/finance/commissions" element={<CommissionDashboard />} />
           <Route path="/finance/commission-settings" element={<CommissionSettings />} />
           <Route path="/rbac/roles" element={<RoleManagement />} />
+        </Route>
+
+        {/* Admin & Master Franchise Routes */}
+        <Route element={<RoleBasedRoute allowedRoles={["admin", "master-franchise"]} />}>
+          <Route path="/hierarchy/areas" element={<AreaList />} />
+          <Route path="/hierarchy/franchise-partners" element={<FranchiseManagement />} />
         </Route>
 
         {/* Core-Member and Admin Routes */}
@@ -144,6 +148,7 @@ function App() {
         {/* Master Franchise Routes */}
         <Route element={<RoleBasedRoute allowedRoles={["master-franchise"]} />}>
           <Route path="/dashboard-franchise" element={<DashboardFranchise />} />
+          <Route path="/dashboard-franchise/area/:areaId" element={<DashboardArea />} />
         </Route>
 
         {/* Area Franchise Routes */}

@@ -70,6 +70,7 @@ export default function FranchiseSignIn() {
         const userRole = localStorage.getItem("role");
         console.log("Redirecting franchise partner with role:", userRole);
 
+        // Both master-franchise and area-franchise use the same unified dashboard
         if (userRole === "master-franchise") {
           navigate("/dashboard-franchise");
         } else if (userRole === "area-franchise") {

@@ -27,8 +27,22 @@ export interface FranchiseUser {
   country?: string;
   state?: string;
   city?: string;
-  zoneId?: string;
-  areaId?: string;
+  zoneId?: string | {
+    _id: string;
+    zoneName: string;
+    cityId: string;
+    stateId?: string;
+    countryId?: string;
+  };
+  areaId?: string | {
+    _id: string;
+    areaName: string;
+    zoneId: string | {
+      _id: string;
+      zoneName: string;
+      cityId: string;
+    };
+  };
   createdAt: string;
 }
 

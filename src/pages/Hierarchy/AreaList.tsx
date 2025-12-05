@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Edit, Trash2 } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { Table, Button, Modal, Input, Badge, Card, Breadcrumb } from '../../components/shared';
-import { getAllAreas, createArea, updateArea, deleteArea, Area } from '../../api/areaApi';
+import { getAllAreas, createArea, updateArea, deleteArea, assignAreaFranchise, Area } from '../../api/areaApi';
+import { getUsersByRole, FranchiseUser, createFranchiseUser, CreateFranchiseData } from '../../api/franchiseApi';
 import { getAllZones, Zone } from '../../api/zoneApi';
 import { toast } from 'react-toastify';
 import Select from 'react-select';
+import { getUserFromLocalStorage } from '../../api/auth';
 
 const AreaList: React.FC = () => {
     const queryClient = useQueryClient();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const user = getUserFromLocalStorage();
+    const isMasterFranchise = user?.role === 'master-franchise';
 
     // Form State
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -20,6 +24,27 @@ const AreaList: React.FC = () => {
     const [capacity, setCapacity] = useState(100);
     const [description, setDescription] = useState('');
     const [pincode, setPincode] = useState('');
+
+    // Step 2: Partner assignment modal
+    const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
+    const [newlyCreatedAreaId, setNewlyCreatedAreaId] = useState<string | null>(null);
+    const [partnerAssignmentMode, setPartnerAssignmentMode] = useState<'select' | 'create'>('select');
+    const [step2SelectedPartner, setStep2SelectedPartner] = useState<any>(null);
+
+    // New partner form fields
+    const [newPartnerFname, setNewPartnerFname] = useState('');
+    const [newPartnerLname, setNewPartnerLname] = useState('');
+    const [newPartnerEmail, setNewPartnerEmail] = useState('');
+    const [newPartnerMobile, setNewPartnerMobile] = useState('');
+    const [newPartnerPassword, setNewPartnerPassword] = useState('');
+
+    // API area suggestions
+    const [apiAreas, setApiAreas] = useState<any[]>([]);
+    const [selectedApiArea, setSelectedApiArea] = useState<any>(null);
+    const [loadingApiAreas, setLoadingApiAreas] = useState(false);
+
+    // Zipcodebase API Key
+    const ZIPCODEBASE_API_KEY = import.meta.env.VITE_ZIPCODEBASE_API_KEY || 'YOUR_API_KEY_HERE';
 
     // Queries
     const { data: areas = [], isLoading: areasLoading } = useQuery({
@@ -32,17 +57,223 @@ const AreaList: React.FC = () => {
         queryFn: () => getAllZones(),
     });
 
+    // Fetch available Area Franchise users for the selected zone
+    const { data: availableAreaFranchises = [] } = useQuery({
+        queryKey: ['area-franchises-available', selectedZone?.value],
+        queryFn: async () => {
+            if (!selectedZone?.value) return [];
+            const allAreaFranchises = await getUsersByRole('area-franchise');
+
+            // Filter to get unassigned area franchises for this zone
+            return allAreaFranchises.filter((af: FranchiseUser) => {
+                const hasNoArea = !af.areaId;
+                const belongsToZone = af.zoneId === selectedZone.value;
+                return hasNoArea && belongsToZone;
+            });
+        },
+        enabled: !!selectedZone?.value,
+    });
+
+    // Fetch API areas when zone is selected
+    useEffect(() => {
+        if (selectedZone?.zone?.cityId && !editingId && isModalOpen) {
+            const countryId = selectedZone.zone.countryId || 'India';
+            fetchApiAreas(selectedZone.zone.cityId, countryId);
+        }
+    }, [selectedZone, editingId, isModalOpen]);
+
+    // Auto-select zone for Master Franchise
+    useEffect(() => {
+        if (isMasterFranchise && user?.zoneId && zones.length > 0 && !selectedZone) {
+            const userZoneId = typeof user.zoneId === 'object' ? user.zoneId._id : user.zoneId;
+            const zone = zones.find((z: Zone) => z._id === userZoneId);
+            if (zone) {
+                setSelectedZone({
+                    label: `${zone.zoneName} (${zone.cityId})`,
+                    value: zone._id,
+                    zone: zone
+                });
+            }
+        }
+    }, [isMasterFranchise, user, zones, selectedZone]);
+
+    const fetchApiAreas = async (cityName: string, countryName: string = 'India') => {
+        setLoadingApiAreas(true);
+        setApiAreas([]);
+        setSelectedApiArea(null);
+
+        console.log('🔍 Fetching areas for city:', cityName);
+
+        // Get existing areas for this zone to filter duplicates
+        const existingAreaNames = new Set(
+            areas
+                .filter((a: Area) => {
+                    const zId = typeof a.zoneId === 'object' ? a.zoneId._id : a.zoneId;
+                    return selectedZone && zId === selectedZone.value;
+                })
+                .map((a: Area) => a.areaName.toLowerCase().trim())
+        );
+
+        try {
+            // Step 1: Try FREE India Post Office API first (for Indian cities)
+            const indiaApiUrl = `https://api.postalpincode.in/postoffice/${encodeURIComponent(cityName)}`;
+            console.log('📡 Trying India Post API:', indiaApiUrl);
+
+            const indiaResponse = await fetch(indiaApiUrl);
+            const indiaData = await indiaResponse.json();
+
+            // Check if India API returned results
+            if (indiaResponse.ok && indiaData[0]?.Status === 'Success' && indiaData[0]?.PostOffice?.length > 0) {
+                console.log('✅ India API Success!');
+                const postOffices = indiaData[0].PostOffice;
+                const areasFromApi: any[] = [];
+                const areaMap = new Map();
+
+                postOffices.forEach((po: any) => {
+                    const areaName = po.Name;
+                    const pincode = po.Pincode;
+
+                    if (areaName && pincode && !areaMap.has(areaName)) {
+                        // Filter out existing areas
+                        if (existingAreaNames.has(areaName.toLowerCase().trim())) {
+                            return;
+                        }
+
+                        areaMap.set(areaName, pincode);
+                        areasFromApi.push({
+                            label: `${areaName} (${pincode})`,
+                            value: areaName,
+                            pincode: pincode,
+                        });
+                    }
+                });
+
+                console.log('✅ Areas from India API:', areasFromApi.length);
+                setApiAreas(areasFromApi);
+                toast.success(`Found ${areasFromApi.length} new areas in ${cityName} (India)!`);
+                return; // Success, exit function
+            }
+
+            // Step 2: India API failed, try Zipcodebase API (for international cities)
+            console.log('⚠️ India API failed, trying Zipcodebase API for international cities...');
+
+            // Map country names to ISO codes
+            const countryCodeMap: any = {
+                'India': 'IN',
+                'UAE': 'AE',
+                'United Arab Emirates': 'AE',
+                'USA': 'US',
+                'United States': 'US',
+                'UK': 'GB',
+                'United Kingdom': 'GB',
+                'Canada': 'CA',
+                'Australia': 'AU',
+                'Singapore': 'SG',
+                // Add more as needed
+            };
+
+            const countryCode = countryCodeMap[countryName] || 'IN'; // Default to India
+            const zipcodeApiUrl = `https://app.zipcodebase.com/api/v1/search?apikey=${ZIPCODEBASE_API_KEY}&city=${encodeURIComponent(cityName)}&country=${countryCode}`;
+
+            console.log(`🌍 Using country: ${countryName} (${countryCode})`);
+
+            console.log('📡 Trying Zipcodebase API:', zipcodeApiUrl);
+
+            const zipcodeResponse = await fetch(zipcodeApiUrl);
+            const zipcodeData = await zipcodeResponse.json();
+
+            if (zipcodeResponse.ok && zipcodeData.results && Object.keys(zipcodeData.results).length > 0) {
+                console.log('✅ Zipcodebase API Success!');
+                const areasFromApi: any[] = [];
+                const areaMap = new Map();
+
+                Object.entries(zipcodeData.results).forEach(([pincode, locations]: [string, any]) => {
+                    locations.forEach((loc: any) => {
+                        const areaName = loc.province_en || loc.city_en || loc.state_en;
+                        if (areaName && !areaMap.has(areaName)) {
+                            // Filter out existing areas
+                            if (existingAreaNames.has(areaName.toLowerCase().trim())) {
+                                return;
+                            }
+
+                            areaMap.set(areaName, pincode);
+                            areasFromApi.push({
+                                label: `${areaName} (${pincode})`,
+                                value: areaName,
+                                pincode: pincode,
+                            });
+                        }
+                    });
+                });
+
+                console.log('✅ Areas from Zipcodebase:', areasFromApi.length);
+                setApiAreas(areasFromApi);
+                toast.success(`Found ${areasFromApi.length} new areas in ${cityName}!`);
+                return; // Success, exit function
+            }
+
+            // Step 3: Both APIs failed
+            console.log('⚠️ Both APIs returned no results');
+            setApiAreas([]);
+            toast.info(`No areas found for "${cityName}". Please enter manually.`);
+
+        } catch (error: any) {
+            console.error('❌ Error fetching API areas:', error);
+            setApiAreas([]);
+            toast.warning('API unavailable. Please enter area manually.');
+        } finally {
+            setLoadingApiAreas(false);
+        }
+    };
+
     // Mutations
     const createMutation = useMutation({
         mutationFn: (data: any) => createArea(data.zoneId, data.payload),
-        onSuccess: () => {
+        onSuccess: (createdArea: any) => {
             queryClient.invalidateQueries({ queryKey: ['areas'] });
-            toast.success('Area created successfully');
+            toast.success('Area created successfully! Now assign a partner.');
+
+            // Close Step 1 modal
             setIsModalOpen(false);
+
+            // Open Step 2 modal for partner assignment
+            setNewlyCreatedAreaId(createdArea._id);
+            setIsPartnerModalOpen(true);
+
+            // Reset Step 1 form
             resetForm();
         },
         onError: (error: any) => {
             toast.error(error.response?.data?.message || 'Failed to create area');
+        }
+    });
+
+    // Step 2: Create new Area Franchise partner (with areaId included)
+    const createPartnerMutation = useMutation({
+        mutationFn: (data: CreateFranchiseData) => createFranchiseUser(data),
+        onSuccess: async (newPartner: FranchiseUser) => {
+            // Partner is already assigned via areaId in the creation payload
+            queryClient.invalidateQueries({ queryKey: ['areas'] });
+            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', selectedZone?.value] });
+            toast.success(`Area Franchise partner "${newPartner.fname}" created and assigned successfully!`);
+            closePartnerModal();
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.message || 'Failed to create partner');
+        }
+    });
+
+    // Step 2: Assign existing partner
+    const assignPartnerMutation = useMutation({
+        mutationFn: (partnerId: string) => assignAreaFranchise(newlyCreatedAreaId!, partnerId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['areas'] });
+            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', selectedZone?.value] });
+            toast.success('Area Franchise partner assigned successfully!');
+            closePartnerModal();
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.message || 'Failed to assign partner');
         }
     });
 
@@ -132,11 +363,80 @@ const AreaList: React.FC = () => {
 
     const resetForm = () => {
         setEditingId(null);
-        setSelectedZone(null);
+        if (!isMasterFranchise) {
+            setSelectedZone(null);
+        }
         setAreaName('');
         setCapacity(100);
         setDescription('');
         setPincode('');
+        setApiAreas([]);
+        setSelectedApiArea(null);
+        setLoadingApiAreas(false);
+    };
+
+    const resetPartnerForm = () => {
+        setNewPartnerFname('');
+        setNewPartnerLname('');
+        setNewPartnerEmail('');
+        setNewPartnerMobile('');
+        setNewPartnerPassword('');
+        setStep2SelectedPartner(null);
+    };
+
+    const closePartnerModal = () => {
+        setIsPartnerModalOpen(false);
+        setNewlyCreatedAreaId(null);
+        setPartnerAssignmentMode('select');
+        resetPartnerForm();
+    };
+
+    const handlePartnerAssignment = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (partnerAssignmentMode === 'select') {
+            // Assign existing partner
+            if (!step2SelectedPartner) {
+                toast.error('Please select a partner to assign');
+                return;
+            }
+            assignPartnerMutation.mutate(step2SelectedPartner.value);
+        } else {
+            // Create new partner
+            if (!newPartnerFname || !newPartnerEmail || !newPartnerMobile || !newPartnerPassword) {
+                toast.error('Please fill all required fields');
+                return;
+            }
+
+            if (!selectedZone) {
+                toast.error('Zone information missing');
+                return;
+            }
+
+            const newPartnerData: CreateFranchiseData = {
+                fname: newPartnerFname,
+                lname: newPartnerLname,
+                email: newPartnerEmail,
+                mobile: newPartnerMobile,
+                password: newPartnerPassword,
+                role: 'area-franchise',
+                zoneId: selectedZone.value, // Assign to current zone
+                areaId: newlyCreatedAreaId!, // Assign to newly created area
+                city: selectedZone.zone.cityId,
+                state: selectedZone.zone.stateId,
+                country: selectedZone.zone.countryId,
+            };
+
+            createPartnerMutation.mutate(newPartnerData);
+        }
+    };
+
+    const handleApiAreaSelection = (option: any) => {
+        setSelectedApiArea(option);
+        if (option) {
+            setAreaName(option.value);
+            setPincode(option.pincode);
+        }
     };
 
     const columns = [
@@ -280,10 +580,14 @@ const AreaList: React.FC = () => {
                                 onChange={(val) => setSelectedZone(val)}
                                 placeholder="Select a zone for this area"
                                 isSearchable
-                                isDisabled={!!editingId} // Disable zone selection when editing
+                                isDisabled={!!editingId || isMasterFranchise} // Disable zone selection when editing or if Master Franchise
                             />
                             <p className="mt-1 text-sm text-gray-500">
-                                {editingId ? "Zone cannot be changed while editing" : "Choose the zone (city) where this area will be located"}
+                                {editingId
+                                    ? "Zone cannot be changed while editing"
+                                    : isMasterFranchise
+                                        ? "You can only create areas in your assigned zone"
+                                        : "Choose the zone (city) where this area will be located"}
                             </p>
                         </div>
 
@@ -304,16 +608,39 @@ const AreaList: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Area Name & Capacity */}
+                        {/* Area Name - Dropdown with API or Manual Entry */}
                         <div>
-                            <Input
-                                label="Area Name"
-                                value={areaName}
-                                onChange={(e) => setAreaName(e.target.value)}
-                                required
-                                placeholder="e.g., Downtown"
-                                helperText="Name of the area"
-                            />
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Area Name <span className="text-red-500">*</span>
+                                {loadingApiAreas && <span className="text-blue-600 ml-2">(Loading areas...)</span>}
+                            </label>
+                            {apiAreas.length > 0 && !editingId ? (
+                                <Select
+                                    options={apiAreas}
+                                    value={selectedApiArea}
+                                    onChange={handleApiAreaSelection}
+                                    placeholder="Select an area from API"
+                                    isSearchable
+                                    isClearable
+                                    isDisabled={loadingApiAreas}
+                                    isLoading={loadingApiAreas}
+                                />
+                            ) : (
+                                <Input
+                                    value={areaName}
+                                    onChange={(e) => setAreaName(e.target.value)}
+                                    required
+                                    placeholder="e.g., Downtown"
+                                    disabled={loadingApiAreas}
+                                />
+                            )}
+                            <p className="mt-1 text-sm text-gray-500">
+                                {apiAreas.length > 0 && !editingId
+                                    ? "Select from API suggestions or clear to enter manually"
+                                    : editingId
+                                        ? "Area name cannot be changed while editing"
+                                        : "Enter area name manually"}
+                            </p>
                         </div>
 
                         <div>
@@ -335,11 +662,11 @@ const AreaList: React.FC = () => {
                         {/* Pincode & Description */}
                         <div>
                             <Input
-                                label="Pincode(s)"
+                                label="Pincode"
                                 value={pincode}
                                 onChange={(e) => setPincode(e.target.value)}
-                                placeholder="e.g., 390001, 390002"
-                                helperText="Comma separated pincodes"
+                                placeholder="e.g., 390001"
+                                helperText={selectedApiArea ? "Auto-filled from API (editable)" : "Enter area pincode"}
                             />
                         </div>
 
@@ -353,12 +680,179 @@ const AreaList: React.FC = () => {
                         </div>
                     </div>
 
+                    {/* Info: Partner assignment happens in Step 2 */}
+                    {!editingId && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <p className="text-xs text-blue-800">
+                                💡 <strong>Next Step:</strong> After creating the area, you'll be able to assign an Area Franchise partner immediately.
+                            </p>
+                        </div>
+                    )}
+
                     <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
                         <Button variant="secondary" onClick={() => setIsModalOpen(false)} type="button">
                             Cancel
                         </Button>
                         <Button type="submit" disabled={!selectedZone || !areaName || createMutation.isPending || updateMutation.isPending}>
                             {createMutation.isPending || updateMutation.isPending ? 'Saving...' : (editingId ? "Update Area" : "Create Area")}
+                        </Button>
+                    </div>
+                </form>
+            </Modal>
+
+            {/* Step 2: Partner Assignment Modal */}
+            <Modal
+                isOpen={isPartnerModalOpen}
+                onClose={closePartnerModal}
+                title="Step 2: Assign Area Franchise Partner"
+                size="lg"
+            >
+                <form onSubmit={handlePartnerAssignment} className="space-y-6">
+                    {/* Info banner */}
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <p className="text-sm text-green-800 font-medium">
+                            ✅ Area created successfully!
+                        </p>
+                        <p className="text-xs text-green-700 mt-1">
+                            Now choose to either select an existing unassigned Area Franchise partner or create a new one.
+                        </p>
+                    </div>
+
+                    {/* Mode Selection: Radio buttons */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-gray-900 mb-3">Choose Assignment Method</h4>
+                        <div className="space-y-3">
+                            <label className="flex items-center cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="partnerMode"
+                                    value="select"
+                                    checked={partnerAssignmentMode === 'select'}
+                                    onChange={() => {
+                                        setPartnerAssignmentMode('select');
+                                        resetPartnerForm();
+                                    }}
+                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                />
+                                <span className="ml-2 text-sm font-medium text-gray-900">
+                                    📋 Select Existing Partner
+                                </span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                                <input
+                                    type="radio"
+                                    name="partnerMode"
+                                    value="create"
+                                    checked={partnerAssignmentMode === 'create'}
+                                    onChange={() => {
+                                        setPartnerAssignmentMode('create');
+                                        setStep2SelectedPartner(null);
+                                    }}
+                                    className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
+                                />
+                                <span className="ml-2 text-sm font-medium text-gray-900">
+                                    ➕ Create New Partner
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {/* Conditional Content based on mode */}
+                    {partnerAssignmentMode === 'select' ? (
+                        // Select existing partner
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Select Area Franchise Partner <span className="text-red-500">*</span>
+                                </label>
+                                {availableAreaFranchises.length > 0 ? (
+                                    <>
+                                        <Select
+                                            options={availableAreaFranchises.map((af: FranchiseUser) => ({
+                                                label: `${af.fname} ${af.lname || ''} (${af.email})`,
+                                                value: af._id,
+                                                partner: af
+                                            }))}
+                                            value={step2SelectedPartner}
+                                            onChange={(val) => setStep2SelectedPartner(val)}
+                                            placeholder="Search for a partner..."
+                                            isSearchable
+                                        />
+                                        <p className="mt-1 text-xs text-gray-500">
+                                            Only showing unassigned partners in this zone.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <div className="text-sm text-red-500 bg-red-50 p-3 rounded border border-red-100">
+                                        No unassigned Area Franchise partners found in this zone. Please create a new one.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    ) : (
+                        // Create new partner
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Input
+                                    label="First Name"
+                                    value={newPartnerFname}
+                                    onChange={(e) => setNewPartnerFname(e.target.value)}
+                                    required
+                                    placeholder="John"
+                                />
+                                <Input
+                                    label="Last Name"
+                                    value={newPartnerLname}
+                                    onChange={(e) => setNewPartnerLname(e.target.value)}
+                                    placeholder="Doe"
+                                />
+                                <Input
+                                    label="Email"
+                                    type="email"
+                                    value={newPartnerEmail}
+                                    onChange={(e) => setNewPartnerEmail(e.target.value)}
+                                    required
+                                    placeholder="john@example.com"
+                                />
+                                <Input
+                                    label="Mobile Number"
+                                    value={newPartnerMobile}
+                                    onChange={(e) => setNewPartnerMobile(e.target.value)}
+                                    required
+                                    placeholder="+91 9876543210"
+                                />
+                                <div className="md:col-span-2">
+                                    <Input
+                                        label="Password"
+                                        type="password"
+                                        value={newPartnerPassword}
+                                        onChange={(e) => setNewPartnerPassword(e.target.value)}
+                                        required
+                                        placeholder="Enter password"
+                                        helperText="Minimum 6 characters"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                        <Button variant="secondary" onClick={closePartnerModal} type="button">
+                            Skip Assignment
+                        </Button>
+                        <Button
+                            type="submit"
+                            disabled={
+                                (partnerAssignmentMode === 'select' && !step2SelectedPartner) ||
+                                (partnerAssignmentMode === 'create' && (!newPartnerFname || !newPartnerEmail || !newPartnerMobile || !newPartnerPassword)) ||
+                                createPartnerMutation.isPending ||
+                                assignPartnerMutation.isPending
+                            }
+                        >
+                            {createPartnerMutation.isPending || assignPartnerMutation.isPending
+                                ? 'Assigning...'
+                                : partnerAssignmentMode === 'create' ? 'Create & Assign Partner' : 'Assign Partner'
+                            }
                         </Button>
                     </div>
                 </form>

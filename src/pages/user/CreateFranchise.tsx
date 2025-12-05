@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import * as yup from 'yup';
 import { yupResolver } from '@hookform/resolvers/yup';
@@ -11,6 +11,7 @@ import { getAllZones, Zone } from '../../api/zoneApi';
 import { getAreasDropdown } from '../../api/areaApi';
 import api from '../../api/api';
 import { Card, Button, Input, Breadcrumb } from '../../components/shared';
+import { getUsersByRole } from '../../api/franchiseApi';
 
 // =====================================
 // TYPES
@@ -27,6 +28,12 @@ interface FranchiseFormData {
     zoneId?: string; // For MF, AF, CGC, DCP
     areaId?: string; // For AF, CGC
     password: string; // Required for creation
+    // Location fields
+    country?: string;
+    state?: string;
+    city?: string;
+    area?: string;
+    pincode?: string;
 }
 
 // =====================================
@@ -57,6 +64,13 @@ const CreateFranchise: React.FC = () => {
     const queryClient = useQueryClient();
     const [selectedZone, setSelectedZone] = useState<any>(null);
     const [selectedArea, setSelectedArea] = useState<any>(null);
+
+    // API-based area loading (TODO: integrate these into the UI)
+    const [_apiAreas, setApiAreas] = useState<any[]>([]);
+    const [_loadingApiAreas, setLoadingApiAreas] = useState(false);
+
+    // Zipcodebase API Key - Store in .env file
+    const ZIPCODEBASE_API_KEY = import.meta.env.VITE_ZIPCODEBASE_API_KEY || 'YOUR_API_KEY_HERE';
 
     // =====================================
     // FORM SETUP
@@ -96,6 +110,92 @@ const CreateFranchise: React.FC = () => {
         queryFn: () => getAreasDropdown(selectedZone?.value),
         enabled: !!selectedZone?.value && ['area-franchise', 'cgc'].includes(selectedRole),
     });
+
+    // Fetch existing area franchises for the selected zone to prevent duplicate area assignments
+    const { data: existingAreaFranchises = [] } = useQuery({
+        queryKey: ['area-franchises-existing', selectedZone?.value],
+        queryFn: async () => {
+            if (!selectedZone?.value) return [];
+            const allAreaFranchises = await getUsersByRole('area-franchise');
+            // Filter to only get area franchises assigned to the selected zone
+            const filtered = allAreaFranchises.filter((af: any) => {
+                return af.zoneId === selectedZone.value;
+            });
+            console.log('All Area Franchises:', allAreaFranchises);
+            console.log('Selected Zone ID:', selectedZone.value);
+            console.log('Filtered Area Franchises:', filtered);
+            return filtered;
+        },
+        enabled: !!selectedZone?.value && ['area-franchise', 'cgc'].includes(selectedRole),
+    });
+
+    // =====================================
+    // API AREA FETCHING (when Zone is selected)
+    // =====================================
+
+    // Fetch areas from API when zone is selected
+    useEffect(() => {
+        if (selectedZone?.value && ['area-franchise', 'cgc'].includes(selectedRole)) {
+            const zone = zones.find((z: Zone) => z._id === selectedZone.value);
+            if (zone?.cityId) {
+                fetchApiAreas(zone.cityId);
+            }
+        }
+    }, [selectedZone, selectedRole, zones]);
+
+    const fetchApiAreas = async (cityName: string) => {
+        setLoadingApiAreas(true);
+        console.log('Fetching areas for city:', cityName);
+
+        try {
+            // Try to get country code from zone (assuming India for now)
+            const countryCode = 'IN'; // You can make this dynamic based on zone data
+
+            const response = await fetch(
+                `https://app.zipcodebase.com/api/v1/search?apikey=${ZIPCODEBASE_API_KEY}&city=${encodeURIComponent(cityName)}&country=${countryCode}`
+            );
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch areas from API');
+            }
+
+            const data = await response.json();
+
+            if (data.results && Object.keys(data.results).length > 0) {
+                // Transform API response to dropdown options
+                const areasFromApi: any[] = [];
+                const areaMap = new Map();
+
+                Object.entries(data.results).forEach(([pincode, locations]: [string, any]) => {
+                    locations.forEach((loc: any) => {
+                        const areaName = loc.province_en || loc.city_en || loc.state_en;
+                        if (areaName && !areaMap.has(areaName)) {
+                            areaMap.set(areaName, pincode);
+                            areasFromApi.push({
+                                label: `${areaName} (${pincode})`,
+                                value: areaName,
+                                pincode: pincode,
+                            });
+                        }
+                    });
+                });
+
+                console.log('API Areas fetched:', areasFromApi);
+                setApiAreas(areasFromApi);
+                toast.success(`Found ${areasFromApi.length} areas from API`);
+            } else {
+                console.log('No areas found in API response');
+                setApiAreas([]);
+                toast.info('No areas found via API. Showing database areas.');
+            }
+        } catch (error) {
+            console.error('Error fetching API areas:', error);
+            setApiAreas([]);
+            toast.warning('API areas unavailable. Showing database areas only.');
+        } finally {
+            setLoadingApiAreas(false);
+        }
+    };
 
     // =====================================
     // MUTATION
@@ -167,10 +267,25 @@ const CreateFranchise: React.FC = () => {
         value: z._id,
     }));
 
-    const areaOptions = areas.map((a: any) => ({
-        label: a.areaName,
-        value: a._id,
-    }));
+    // Build a Set of already-assigned area IDs to prevent duplicates
+    const assignedAreaIds = new Set(
+        existingAreaFranchises.map((af: any) => {
+            // Handle both cases: areaId as string ID or populated object
+            return typeof af.areaId === 'object' ? af.areaId?._id : af.areaId;
+        })
+    );
+
+    // Filter out assigned areas completely - don't show them at all
+    const areaOptions = areas
+        .filter((a: any) => !assignedAreaIds.has(a._id))
+        .map((a: any) => ({
+            label: a.areaName,
+            value: a._id,
+        }));
+
+    console.log('Available areas:', areas);
+    console.log('Assigned Area IDs Set:', assignedAreaIds);
+    console.log('Unassigned Area Options:', areaOptions);
 
     return (
         <div className="p-6">

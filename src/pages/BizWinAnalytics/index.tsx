@@ -51,6 +51,8 @@ interface TYFCBRecord {
         city?: string;
         state?: string;
         country?: string;
+        businessArea?: string;
+        businessPincode?: string | number;
       };
     };
   };
@@ -71,6 +73,8 @@ interface TYFCBRecord {
         city?: string;
         state?: string;
         country?: string;
+        businessArea?: string;
+        businessPincode?: string | number;
       };
     };
   };
@@ -89,6 +93,8 @@ export default function BizWinAnalytics() {
   const [countryFilter, setCountryFilter] = useState("all");
   const [stateFilter, setStateFilter] = useState("all");
   const [cityFilter, setCityFilter] = useState("all");
+  const [areaFilter, setAreaFilter] = useState("all");
+  const [pincodeFilter, setPincodeFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [dateFilter, setDateFilter] = useState<DateFilterType>("3months");
 
@@ -98,6 +104,8 @@ export default function BizWinAnalytics() {
   const [states, setStates] = useState<{ isoCode: string; name: string }[]>([]);
   const [allBusinessCities, setAllBusinessCities] = useState<string[]>([]); // All cities from business data
   const [cities, setCities] = useState<string[]>([]); // Filtered cities based on country/state
+  const [areas, setAreas] = useState<string[]>([]);
+  const [pincodes, setPincodes] = useState<string[]>([]);
   const [membershipTypes, setMembershipTypes] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -144,6 +152,8 @@ export default function BizWinAnalytics() {
     countryFilter,
     stateFilter,
     cityFilter,
+    areaFilter,
+    pincodeFilter,
     membershipFilter,
     dateFilter,
   ]);
@@ -291,6 +301,8 @@ export default function BizWinAnalytics() {
         const users = response.data.data.users;
 
         const uniqueCities = new Set<string>();
+        const uniqueAreas = new Set<string>();
+        const uniquePincodes = new Set<string>();
         const uniqueMembershipTypes = new Set<string>();
         const cityMap = new Map<string, string>();
         const companyMap = new Map<string, string>();
@@ -321,6 +333,18 @@ export default function BizWinAnalytics() {
           const membership = user?.membershipType;
           if (membership && membership !== "N/A" && membership.trim() !== "") {
             uniqueMembershipTypes.add(membership);
+          }
+
+          // Extract business area
+          const area = user?.profile?.professionalDetails?.businessArea;
+          if (area && area !== "N/A" && area.trim() !== "") {
+            uniqueAreas.add(area);
+          }
+
+          // Extract business pincode
+          const pincode = user?.profile?.professionalDetails?.businessPincode;
+          if (pincode && String(pincode) !== "N/A" && String(pincode).trim() !== "") {
+            uniquePincodes.add(String(pincode));
           }
 
           // Extract business country from professionalDetails (with fallback to addresses.address)
@@ -455,6 +479,8 @@ export default function BizWinAnalytics() {
         const sortedCities = Array.from(uniqueCities).sort();
         setAllBusinessCities(sortedCities); // Store all business cities
         setCities(sortedCities); // Initially show all
+        setAreas(Array.from(uniqueAreas).sort());
+        setPincodes(Array.from(uniquePincodes).sort());
         setMembershipTypes(Array.from(uniqueMembershipTypes).sort());
         setUserCityMap(cityMap);
         setUserCompanyMap(companyMap);
@@ -562,6 +588,24 @@ export default function BizWinAnalytics() {
         const fromCity = getCityForUser(record.from?._id);
         const toCity = getCityForUser(record.to?._id);
         return fromCity === cityFilter || toCity === cityFilter;
+      });
+    }
+
+    // Area filter
+    if (areaFilter !== "all") {
+      filtered = filtered.filter((record) => {
+        const fromArea = record.from.profile?.professionalDetails?.businessArea;
+        const toArea = record.to.profile?.professionalDetails?.businessArea;
+        return fromArea === areaFilter || toArea === areaFilter;
+      });
+    }
+
+    // Pincode filter
+    if (pincodeFilter !== "all") {
+      filtered = filtered.filter((record) => {
+        const fromPincode = String(record.from.profile?.professionalDetails?.businessPincode || "");
+        const toPincode = String(record.to.profile?.professionalDetails?.businessPincode || "");
+        return fromPincode === pincodeFilter || toPincode === pincodeFilter;
       });
     }
 
@@ -752,9 +796,8 @@ export default function BizWinAnalytics() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `bizwin-analytics-${
-      new Date().toISOString().split("T")[0]
-    }.csv`;
+    link.download = `bizwin-analytics-${new Date().toISOString().split("T")[0]
+      }.csv`;
     link.click();
     URL.revokeObjectURL(url);
     toast.success("CSV downloaded successfully!");
@@ -999,6 +1042,40 @@ export default function BizWinAnalytics() {
                 {cities.map((city) => (
                   <MenuItem key={city} value={city}>
                     {city}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                select
+                label="Area"
+                value={areaFilter}
+                onChange={(e) => setAreaFilter(e.target.value)}
+              >
+                <MenuItem value="all">All Areas</MenuItem>
+                {areas.map((area) => (
+                  <MenuItem key={area} value={area}>
+                    {area}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                select
+                label="Pincode"
+                value={pincodeFilter}
+                onChange={(e) => setPincodeFilter(e.target.value)}
+              >
+                <MenuItem value="all">All Pincodes</MenuItem>
+                {pincodes.map((pincode) => (
+                  <MenuItem key={pincode} value={pincode}>
+                    {pincode}
                   </MenuItem>
                 ))}
               </TextField>

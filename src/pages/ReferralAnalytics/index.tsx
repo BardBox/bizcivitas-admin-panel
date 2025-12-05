@@ -66,7 +66,11 @@ interface InviteSlip {
 
 type DateFilterType = "15days" | "30days" | "90days" | "tilldate";
 
-export default function ReferralAnalytics() {
+interface ReferralAnalyticsProps {
+  businessArea?: string; // The business area name (e.g., "Jawahar Nagar")
+}
+
+export default function ReferralAnalytics({ businessArea }: ReferralAnalyticsProps) {
   const [records, setRecords] = useState<InviteSlip[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<InviteSlip[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,7 +107,9 @@ export default function ReferralAnalytics() {
   const fetchAllRecords = async () => {
     setLoading(true);
     try {
-      const response = await api.get("/referrals");
+      const response = await api.get("/referrals", {
+        params: { businessArea }, // Filter by businessArea instead of areaId
+      });
 
       if (response.data.success) {
         const data = response.data.data || [];
@@ -508,8 +514,8 @@ export default function ReferralAnalytics() {
                                     height: '100%',
                                     backgroundColor:
                                       successRate >= 75 ? '#4caf50' :
-                                      successRate >= 50 ? '#2196f3' :
-                                      successRate >= 25 ? '#ff9800' : '#f44336',
+                                        successRate >= 50 ? '#2196f3' :
+                                          successRate >= 25 ? '#ff9800' : '#f44336',
                                     transition: 'width 0.3s ease',
                                   }}
                                 />
