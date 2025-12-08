@@ -54,9 +54,13 @@ export const loginUser = async (email: string, password: string): Promise<LoginR
 
     const { user, accessToken, refreshToken } = response.data.data;
 
+    // Store in cookies (primary method)
     document.cookie = `accessToken=${accessToken}; path=/; secure`;
     document.cookie = `refreshToken=${refreshToken}; path=/; secure`;
+
+    // Store in localStorage (backup for API interceptor)
     localStorage.setItem("user", JSON.stringify(user));
+    localStorage.setItem("token", accessToken);
 
     return { user, accessToken, refreshToken };
   } catch (error: any) {

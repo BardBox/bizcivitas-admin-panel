@@ -228,9 +228,15 @@ const SidebarContent = ({
       roles: ["admin"],
     },
     {
-      text: "Membership manage",
+      text: "Benefit Management",
       icon: <CardMembershipIcon />,
       link: "/memberships",
+      roles: ["admin"],
+    },
+    {
+      text: "Membership Plans",
+      icon: <CardMembershipIcon />,
+      link: "/finance/membership-plans",
       roles: ["admin"],
     },
     {
@@ -249,6 +255,18 @@ const SidebarContent = ({
       text: "Commissions",
       icon: <MonetizationOnIcon />,
       link: "/finance/commissions",
+      roles: ["admin"],
+    },
+    {
+      text: "Commission Settings",
+      icon: <MonetizationOnIcon />,
+      link: "/finance/commission-settings",
+      roles: ["admin"],
+    },
+    {
+      text: "Commission Calculator",
+      icon: <MonetizationOnIcon />,
+      link: "/finance/commission-calculator",
       roles: ["admin"],
     },
     {
@@ -280,7 +298,13 @@ const SidebarContent = ({
       text: "Dashboard",
       icon: <DashboardIcon />,
       link: "/dashboard-franchise",
-      roles: ["master-franchise", "area-franchise"],
+      roles: ["master-franchise"],
+    },
+    {
+      text: "Dashboard",
+      icon: <DashboardIcon />,
+      link: "/dashboard-area",
+      roles: ["area-franchise"],
     },
 
     {
@@ -293,6 +317,12 @@ const SidebarContent = ({
       text: "Commission Dashboard",
       icon: <MonetizationOnIcon />,
       link: "/finance/commissions",
+      roles: ["master-franchise", "area-franchise", "admin"],
+    },
+    {
+      text: "Commission Settings",
+      icon: <MonetizationOnIcon />,
+      link: "/finance/commission-settings",
       roles: ["master-franchise", "area-franchise"],
     },
     // CGC Routes

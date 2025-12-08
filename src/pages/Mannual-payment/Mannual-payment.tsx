@@ -196,8 +196,8 @@ const ManualPaymentForm: React.FC = () => {
         const fetchedSubcategories = Array.isArray(response.data?.data)
           ? response.data.data
           : Array.isArray(response.data)
-          ? response.data
-          : [];
+            ? response.data
+            : [];
         setSubcategories(fetchedSubcategories);
       } catch (error: any) {
         toast.error(error.response?.data?.message || "Failed to fetch subcategories.");
@@ -217,9 +217,9 @@ const ManualPaymentForm: React.FC = () => {
         if (response.data.success) {
           const options = Array.isArray(response.data.data)
             ? response.data.data.map((user: User) => ({
-                id: user._id,
-                label: `${user.fname} ${user.lname || ""}`.trim(),
-              }))
+              id: user._id,
+              label: `${user.fname} ${user.lname || ""}`.trim(),
+            }))
             : [];
           setReferrerOptions(options);
         } else {

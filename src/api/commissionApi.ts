@@ -138,6 +138,12 @@ export const getAllCommissions = async (params?: {
   return response.data;
 };
 
+// Get recent manual payments (backend: GET /api/v1/payment/recent-manual)
+export const getRecentCommissions = async (limit: number = 20) => {
+  const response = await api.get('/payment/recent-manual', { params: { limit } });
+  return response.data;
+};
+
 // Get commission statistics (backend: GET /api/v1/commissions/stats)
 export const getCommissionStats = async (params?: {
   startDate?: string;
@@ -168,5 +174,29 @@ export const markCommissionAsPaid = async (
   }
 ) => {
   const response = await api.patch(`/commissions/${id}/mark-paid`, data);
+  return response.data;
+};
+// Member overrides
+export interface CommissionOverrideData {
+  memberId: string;
+  areaId: string;
+  membershipType: string;
+  memberType: 'core-member' | 'dgc';
+  commissionPercentage: number;
+  notes?: string;
+}
+
+export const createCommissionOverride = async (data: CommissionOverrideData) => {
+  const response = await api.post('/commission-override', data);
+  return response.data;
+};
+
+export const getCommissionOverrides = async (params: { areaId?: string, membershipType?: string, memberId?: string }) => {
+  const response = await api.get('/commission-override', { params });
+  return response.data;
+};
+
+export const deleteCommissionOverride = async (id: string) => {
+  const response = await api.delete(`/commission-override/${id}`);
   return response.data;
 };

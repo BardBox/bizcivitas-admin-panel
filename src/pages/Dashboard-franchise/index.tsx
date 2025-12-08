@@ -41,6 +41,7 @@ import { getUserFromLocalStorage } from "../../api/auth";
 import axiosInstance from "../../axiosInstance";
 import ChartsView from "./ChartsView";
 import { useVisibility } from "../../context/VisibilityContext";
+import CommissionDistributionTab from "./CommissionDistributionTab";
 
 // Role-based dashboard types
 type DashboardRole = "admin" | "master-franchise" | "area-franchise";
@@ -828,108 +829,10 @@ const DashboardFranchise: React.FC = () => {
         {/* Commission Details Tab (Master Franchise only) */}
         {dashboardRole === "master-franchise" && (
           <TabPanel value={tabValue} index={2}>
-            <Grid container spacing={3}>
-              {/* Commission by Area */}
-              <Grid item xs={12} md={8}>
-                <Paper sx={{ p: 3 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Commission by Area
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-                  <TableContainer>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell><strong>Area</strong></TableCell>
-                          <TableCell align="right"><strong>Members</strong></TableCell>
-                          <TableCell align="right"><strong>BizWin Generated</strong></TableCell>
-                          <TableCell align="right"><strong>Commission Earned</strong></TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {dashboardData.areaFranchises.map((area) => (
-                          <TableRow key={area.areaId}>
-                            <TableCell>{area.areaName}</TableCell>
-                            <TableCell align="right">{area.metrics?.userCount || 0}</TableCell>
-                            <TableCell align="right">{formatCurrency(area.metrics?.totalBizWinAmount || 0)}</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: "bold", color: "success.main" }}>
-                              {/* Commission calculation pending - will be added in future */}
-                              ₹0
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                        <TableRow sx={{ backgroundColor: "#f5f5f5" }}>
-                          <TableCell><strong>Total</strong></TableCell>
-                          <TableCell align="right">
-                            <strong>{dashboardData.summary.totalMembers}</strong>
-                          </TableCell>
-                          <TableCell align="right">
-                            <strong>{formatCurrency(metricsData.totalBizWinAmount)}</strong>
-                          </TableCell>
-                          <TableCell align="right" sx={{ fontWeight: "bold", color: "success.main", fontSize: "1.1rem" }}>
-                            {/* Total commission calculation pending */}
-                            ₹0
-                          </TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </TableContainer>
-                </Paper>
-              </Grid>
-
-              {/* Payout Summary */}
-              <Grid item xs={12} md={4}>
-                <Paper sx={{ p: 3 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Commission Breakdown
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-                  <Box mt={2}>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Offline Members ({dashboardData.summary.offlineMembers}):</Typography>
-                      <Typography fontWeight="bold">₹0</Typography>
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Digital Members ({dashboardData.summary.digitalMembers}):</Typography>
-                      <Typography fontWeight="bold">₹0</Typography>
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" sx={{ pt: 2, borderTop: "2px solid #e0e0e0" }}>
-                      <Typography variant="h6">Total Commission:</Typography>
-                      <Typography variant="h6" fontWeight="bold" color="primary">
-                        ₹0
-                      </Typography>
-                    </Box>
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      Commission calculation feature coming soon
-                    </Alert>
-                  </Box>
-                </Paper>
-
-                <Paper sx={{ p: 3, mt: 2 }}>
-                  <Typography variant="h6" gutterBottom>
-                    Payout Status
-                  </Typography>
-                  <Divider sx={{ mb: 2 }} />
-                  <Box mt={2}>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Pending Payouts:</Typography>
-                      <Chip label="₹0" color="warning" />
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Completed Payouts:</Typography>
-                      <Chip label="₹0" color="success" />
-                    </Box>
-                    <Box display="flex" justifyContent="space-between" mb={2}>
-                      <Typography>Next Payout Date:</Typography>
-                      <Typography fontWeight="bold">-</Typography>
-                    </Box>
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      Payout tracking feature coming soon
-                    </Alert>
-                  </Box>
-                </Paper>
-              </Grid>
-            </Grid>
+            <CommissionDistributionTab
+              zoneName={dashboardData.zone.name}
+              userRole={dashboardRole}
+            />
           </TabPanel>
         )}
 

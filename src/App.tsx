@@ -59,6 +59,7 @@ import FranchiseManagement from "./pages/Hierarchy/FranchiseManagement";
 import CommissionDashboard from "./pages/Finance/CommissionDashboard";
 import CommissionSettings from "./pages/Finance/CommissionSettings";
 import CommissionCalculator from "./pages/Finance/CommissionCalculator";
+import MembershipPlans from "./pages/Finance/MembershipPlans";
 import RoleManagement from "./pages/RBAC/RoleManagement";
 
 function App() {
@@ -125,15 +126,16 @@ function App() {
           <Route path="/hierarchy/zones" element={<ZoneList />} />
           <Route path="/hierarchy/zones/:id" element={<ZoneDetails />} />
           <Route path="/finance/commissions" element={<CommissionDashboard />} />
-          <Route path="/finance/commission-settings" element={<CommissionSettings />} />
+          <Route path="/finance/membership-plans" element={<MembershipPlans />} />
           <Route path="/finance/commission-calculator" element={<CommissionCalculator />} />
           <Route path="/rbac/roles" element={<RoleManagement />} />
         </Route>
 
-        {/* Admin & Master Franchise Routes */}
-        <Route element={<RoleBasedRoute allowedRoles={["admin", "master-franchise"]} />}>
+        {/* Admin, Master Franchise & Area Franchise Routes */}
+        <Route element={<RoleBasedRoute allowedRoles={["admin", "master-franchise", "area-franchise"]} />}>
           <Route path="/hierarchy/areas" element={<AreaList />} />
           <Route path="/hierarchy/franchise-partners" element={<FranchiseManagement />} />
+          <Route path="/finance/commission-settings" element={<CommissionSettings />} />
         </Route>
 
         {/* Core-Member and Admin Routes */}

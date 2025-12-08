@@ -171,6 +171,17 @@ export const getUsersByRole = async (role: UserRole, params?: {
 };
 
 /**
+ * Get all users in a specific business area (for area franchises)
+ * Backend endpoint: GET /api/v1/users/getallusers?businessArea=<areaName>
+ */
+export const getUsersByArea = async (businessArea: string) => {
+  const response = await api.get('/users/getallusers', {
+    params: { businessArea }
+  });
+  return response.data;
+};
+
+/**
  * Get user's role and permissions
  * Backend endpoint: GET /api/v1/users/:id
  */
