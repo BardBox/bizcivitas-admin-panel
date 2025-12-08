@@ -58,6 +58,7 @@ import ZoneDetails from "./pages/Hierarchy/ZoneDetails";
 import FranchiseManagement from "./pages/Hierarchy/FranchiseManagement";
 import CommissionDashboard from "./pages/Finance/CommissionDashboard";
 import CommissionSettings from "./pages/Finance/CommissionSettings";
+import CommissionCalculator from "./pages/Finance/CommissionCalculator";
 import RoleManagement from "./pages/RBAC/RoleManagement";
 
 function App() {
@@ -125,6 +126,7 @@ function App() {
           <Route path="/hierarchy/zones/:id" element={<ZoneDetails />} />
           <Route path="/finance/commissions" element={<CommissionDashboard />} />
           <Route path="/finance/commission-settings" element={<CommissionSettings />} />
+          <Route path="/finance/commission-calculator" element={<CommissionCalculator />} />
           <Route path="/rbac/roles" element={<RoleManagement />} />
         </Route>
 

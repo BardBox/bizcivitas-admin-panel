@@ -270,7 +270,7 @@ const SidebarContent = ({
       roles: ["core-member"],
     },
     {
-      text: "Users",
+      text: "My Referred Users",
       icon: <PeopleIcon />,
       link: "/user-core",
       roles: ["core-member"],

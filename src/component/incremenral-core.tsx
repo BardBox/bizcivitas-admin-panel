@@ -61,7 +61,7 @@ const Incrementalcore: React.FC = () => {
 
   const stats = [
     { title: "Referrals", value: animatedCounts.referrals, color: "blue", icon: <FaUsers /> },
-    { title: "Users", value: animatedCounts.users, color: "green", icon: <FaCalendarAlt /> },
+    { title: "Connections", value: animatedCounts.users, color: "green", icon: <FaCalendarAlt /> },
     { title: "Community", value: animatedCounts.community, color: "yellow", icon: <FaUserShield /> },
   ];
 

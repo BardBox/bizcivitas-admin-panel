@@ -34,6 +34,7 @@ interface Member {
   companyName: string;
   industry: string;
   city: string | null;
+  memberType?: string;
 }
 
 interface Community {
@@ -67,6 +68,7 @@ const CommunityMembersPage: React.FC = () => {
         email: user.email || "N/A",
         mobile: user.contactNo ? String(user.contactNo) : "N/A",
         role: user.role || "N/A",
+        memberType: user.memberType || "N/A",
         membershipType: user.classification || "N/A",
         companyName: user.companyName || "N/A",
         industry: user.industry || "N/A",
@@ -145,6 +147,7 @@ const CommunityMembersPage: React.FC = () => {
         email: user.email || "N/A",
         mobile: user.contactNo ? String(user.contactNo) : "N/A",
         role: user.role || "N/A",
+        memberType: user.memberType || "N/A",
         membershipType: user.classification || "N/A",
         companyName: user.companyName || "N/A",
         industry: user.industry || "N/A",
@@ -262,6 +265,7 @@ const CommunityMembersPage: React.FC = () => {
                     <TableCell>Email</TableCell>
                     <TableCell>Contact No.</TableCell>
                     <TableCell>Role</TableCell>
+                    <TableCell>Member Type</TableCell>
                     <TableCell>Membership Type</TableCell>
                     <TableCell>Company Name</TableCell>
                     <TableCell>Industry</TableCell>
@@ -281,6 +285,7 @@ const CommunityMembersPage: React.FC = () => {
                       <TableCell>{member.email}</TableCell>
                       <TableCell>{member.mobile}</TableCell>
                       <TableCell>{member.role}</TableCell>
+                      <TableCell>{member.memberType}</TableCell>
                       <TableCell>{member.membershipType}</TableCell>
                       <TableCell>{member.companyName}</TableCell>
                       <TableCell>{member.industry}</TableCell>
@@ -306,9 +311,20 @@ const CommunityMembersPage: React.FC = () => {
               </Table>
             </TableContainer>
           ) : (
-            <Typography textAlign="center" color="textSecondary">
-              No members found.
-            </Typography>
+            <Box textAlign="center" py={6}>
+              <Typography variant="h6" color="textSecondary" gutterBottom>
+                No regular members in this community yet
+              </Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+                This community has core members but no regular users assigned yet.
+              </Typography>
+              <Typography variant="body2" color="textSecondary" sx={{ mb: 1 }}>
+                <strong>Core Members</strong> manage the community, while <strong>Regular Members</strong> participate in activities.
+              </Typography>
+              <Typography variant="body2" color="primary">
+                Switch to the <strong>"All Users"</strong> tab to assign regular members to this community
+              </Typography>
+            </Box>
           )}
         </Box>
       ) : (
