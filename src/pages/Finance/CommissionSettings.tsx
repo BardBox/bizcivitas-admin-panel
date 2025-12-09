@@ -19,6 +19,7 @@ import { getUserFromLocalStorage } from '../../api/auth';
 import { getUsersByArea } from '../../api/rbacApi';
 import { toast } from 'react-toastify';
 import { FiAlertCircle, FiUser, FiPieChart, FiLock, FiClock, FiCheckCircle } from 'react-icons/fi';
+import PaymentBreakdown from '../../components/PaymentBreakdown';
 
 // Define pricing constants explicitly to match CommissionCalculator
 const MEMBERSHIP_PRICING: Record<string, number> = {
@@ -87,21 +88,14 @@ const CommissionSettings: React.FC = () => {
 
     const fetchRecent = async () => {
       try {
-        console.log("Fetching recent manual payments...");
         const response = await getRecentCommissions(20); // Get last 20
-        console.log("Recent payments response:", response);
 
         // Handle different response structures
         const data = response?.data?.data || response?.data || response;
 
         if (Array.isArray(data) && data.length > 0) {
-          console.log("Setting recent transactions:", data.length, "items");
-          console.log("First item:", data[0]);
-          console.log("First item userId:", data[0].userId);
-          console.log("First item user:", data[0].user);
           setRecentTransactions(data);
         } else {
-          console.warn("No data found in response. Full response:", response);
           setRecentTransactions([]);
         }
       } catch (error) {
@@ -135,7 +129,6 @@ const CommissionSettings: React.FC = () => {
       });
 
       setCoreMembers(validMembers);
-      console.log(`✅ Found ${validMembers.length} core members in ${cleanAreaName}`);
     } catch (err) {
       console.error("Failed to fetch core members", err);
     }
@@ -156,7 +149,6 @@ const CommissionSettings: React.FC = () => {
       });
 
       setDgcMembers(validDGCs);
-      console.log(`✅ Found ${validDGCs.length} digital members in ${cleanAreaName}`);
     } catch (err) {
       console.error("Failed to fetch DGCs", err);
     }
@@ -699,9 +691,18 @@ const CommissionSettings: React.FC = () => {
                                   }
                                 });
                                 const data = await response.json();
+                                console.log('📊 User API Response:', data);
 
                                 if (data.success && data.data.user) {
                                   const userData = data.data.user;
+
+                                  // Get business location from profile
+                                  const businessCity = userData.profile?.professionalDetails?.businessCity || null;
+                                  const businessArea = userData.profile?.professionalDetails?.businessArea || null;
+
+                                  console.log('🔍 Business City:', businessCity);
+                                  console.log('🔍 Business Area:', businessArea);
+
                                   setSelectedTransaction({
                                     userId: userData._id,
                                     user: {
@@ -710,8 +711,14 @@ const CommissionSettings: React.FC = () => {
                                       email: userData.email,
                                       membershipType: userData.membershipType
                                     },
-                                    zone: userData.zoneId ? { _id: userData.zoneId, zoneName: userData.zoneId } : null,
-                                    area: userData.areaId ? { _id: userData.areaId, areaName: userData.areaId } : null,
+                                    zone: businessCity ? {
+                                      _id: businessCity,
+                                      zoneName: businessCity
+                                    } : null,
+                                    area: businessArea ? {
+                                      _id: businessArea,
+                                      areaName: businessArea
+                                    } : null,
                                     summary: userData.paymentSummary || {
                                       totalAmount: 0,
                                       completedAmount: 0,
@@ -761,6 +768,12 @@ const CommissionSettings: React.FC = () => {
                                 <p className="text-gray-500 font-medium">Area:</p>
                                 <p className="text-gray-900 font-bold">{selectedTransaction.area?.areaName || 'Not Assigned'}</p>
                               </div>
+
+                              {/* Payment Breakdown by Fee Type */}
+                              {selectedTransaction.payments && selectedTransaction.payments.length > 0 && (
+                                <PaymentBreakdown payments={selectedTransaction.payments} />
+                              )}
+
                               <div className="col-span-2 pt-2 border-t border-gray-200">
                                 <p className="text-gray-500 font-medium mb-1">Payment Summary:</p>
                                 <div className="flex gap-4 text-xs">
