@@ -262,7 +262,7 @@ const SidebarContent = ({
       icon: <MonetizationOnIcon />,
       link: "/finance/commission-settings",
       roles: ["admin"],
-    },
+    },  
     {
       text: "Commission Tracking",
       icon: <MonetizationOnIcon />,
