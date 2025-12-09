@@ -251,17 +251,23 @@ const SidebarContent = ({
       link: "/hierarchy/areas",
       roles: ["admin"],
     },
-    {
-      text: "Commissions",
-      icon: <MonetizationOnIcon />,
-      link: "/finance/commissions",
-      roles: ["admin"],
-    },
+    // {
+    //   text: "Commissions",
+    //   icon: <MonetizationOnIcon />,
+    //   link: "/finance/commissions",
+    //   roles: ["admin"],
+    // },
     {
       text: "Commission Settings",
       icon: <MonetizationOnIcon />,
       link: "/finance/commission-settings",
       roles: ["admin"],
+    },
+    {
+      text: "Commission Tracking",
+      icon: <MonetizationOnIcon />,
+      link: "/finance/commission-tracking",
+      roles: ["admin", "master-franchise", "area-franchise"],
     },
     {
       text: "Commission Calculator",

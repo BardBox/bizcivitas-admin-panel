@@ -59,6 +59,9 @@ import FranchiseManagement from "./pages/Hierarchy/FranchiseManagement";
 import CommissionDashboard from "./pages/Finance/CommissionDashboard";
 import CommissionSettings from "./pages/Finance/CommissionSettings";
 import CommissionCalculator from "./pages/Finance/CommissionCalculator";
+import CommissionTracking from "./pages/Finance/CommissionTracking";
+import ZoneCommissionAllocation from "./pages/Finance/ZoneCommissionAllocation";
+import ZonePartnerCommissions from "./pages/Finance/ZonePartnerCommissions";
 import MembershipPlans from "./pages/Finance/MembershipPlans";
 import RoleManagement from "./pages/RBAC/RoleManagement";
 
@@ -136,6 +139,8 @@ function App() {
           <Route path="/hierarchy/areas" element={<AreaList />} />
           <Route path="/hierarchy/franchise-partners" element={<FranchiseManagement />} />
           <Route path="/finance/commission-settings" element={<CommissionSettings />} />
+          <Route path="/finance/commission-tracking" element={<CommissionTracking />} />
+          <Route path="/finance/commission-allocation/:commissionId" element={<ZoneCommissionAllocation />} />
         </Route>
 
         {/* Core-Member and Admin Routes */}
@@ -154,6 +159,7 @@ function App() {
           <Route path="/dashboard-franchise" element={<DashboardFranchise />} />
           <Route path="/dashboard-franchise/zone/:zoneId" element={<DashboardZone />} />
           <Route path="/dashboard-franchise/area/:areaId" element={<DashboardArea />} />
+          <Route path="/finance/zone-commissions" element={<ZonePartnerCommissions />} />
         </Route>
 
         {/* Area Franchise Routes */}

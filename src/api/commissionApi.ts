@@ -11,6 +11,7 @@ export interface Commission {
     membershipType?: string;
   };
   membershipType: 'flagship' | 'digital';
+  originalMembershipType?: string; // Original membership type for display
   baseAmount: number;
   totalCommissionPool: number;
   distribution: {
@@ -198,5 +199,11 @@ export const getCommissionOverrides = async (params: { areaId?: string, membersh
 
 export const deleteCommissionOverride = async (id: string) => {
   const response = await api.delete(`/commission-override/${id}`);
+  return response.data;
+};
+
+// Delete commission (backend: DELETE /api/v1/commissions/:id)
+export const deleteCommission = async (id: string) => {
+  const response = await api.delete(`/commissions/${id}`);
   return response.data;
 };

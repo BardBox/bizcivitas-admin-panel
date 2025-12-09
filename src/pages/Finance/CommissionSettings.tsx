@@ -13,7 +13,8 @@ import {
   createCommissionOverride,
   getCommissionOverrides,
   getRecentCommissions,
-  CommissionOverrideData
+  CommissionOverrideData,
+  calculateCommission
 } from '../../api/commissionApi';
 import { getUserFromLocalStorage } from '../../api/auth';
 import { getUsersByArea } from '../../api/rbacApi';
@@ -330,6 +331,12 @@ const CommissionSettings: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // First, if a transaction is selected, calculate and save commission
+    if (userRole === 'admin' && selectedTransaction) {
+      await handleCalculateCommission();
+      return; // Stop here - don't save config
+    }
+
     if (userRole === 'master-franchise') {
       // MF Logic: Saving Area Share (Relative to Total Pool)
       const absoluteAreaShare = (networkShare * areaShare) / 100;
@@ -453,7 +460,50 @@ const CommissionSettings: React.FC = () => {
     }
   };
 
-  const exampleAmount = MEMBERSHIP_PRICING[selectedMembership] || 100000;
+  // Use actual total amount from selected transaction, fallback to static pricing
+  const exampleAmount = selectedTransaction?.summary?.totalAmount || MEMBERSHIP_PRICING[selectedMembership] || 100000;
+
+  // Calculate & Save Commission for Selected Transaction
+  const handleCalculateCommission = async () => {
+    if (!selectedTransaction) {
+      toast.error('Please select a user from "Recent Manual Payments" dropdown first');
+      return;
+    }
+
+    if (!selectedTransaction.userId) {
+      toast.error('User ID is missing');
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Log what we're sending
+      console.log('📤 Calculating commission for:', {
+        sourceMemberId: selectedTransaction.userId,
+        user: selectedTransaction.user,
+        membershipType: selectedTransaction.user.membershipType,
+        totalAmount: selectedTransaction.summary.totalAmount,
+        zone: selectedTransaction.zone?.zoneName,
+        area: selectedTransaction.area?.areaName
+      });
+
+      // Backend will find the user's latest completed payment automatically
+      const result = await calculateCommission({
+        paymentId: selectedTransaction.userId, // Using userId as paymentId - backend will handle it
+        sourceMemberId: selectedTransaction.userId,
+        transactionType: 'registration'
+      });
+
+      toast.success(`✅ Commission calculated and saved to database!`);
+      console.log('✅ Commission Result:', result);
+    } catch (error: any) {
+      console.error('❌ Failed to calculate commission:', error);
+      toast.error(error.response?.data?.message || 'Failed to calculate commission. Check console for details.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Helpers to get selected zone/area details
   const selectedZone = zones.find(z => z._id === selectedZoneId);
@@ -1021,7 +1071,7 @@ const CommissionSettings: React.FC = () => {
               {/* Submit Button */}
               <div className="flex justify-end pt-6 border-t border-gray-100">
                 <Button variant="primary" type="submit" loading={loading} className="px-8">
-                  {loading ? 'Saving...' : 'Save Configuration'}
+                  {loading ? 'Saving...' : selectedTransaction ? 'Calculate & Save Commission' : 'Save Configuration'}
                 </Button>
               </div>
 
