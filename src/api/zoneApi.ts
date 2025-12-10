@@ -5,7 +5,8 @@ export interface Zone {
   zoneId: string;
   countryId: string;
   stateId: string;
-  cityId: string;
+  cities: string[]; // Array of city names in this zone
+  cityId: string; // Deprecated: kept for backward compatibility
   zoneName: string;
   assignedMFId?: {
     _id: string;
@@ -35,7 +36,8 @@ export interface Zone {
 export interface CreateZoneData {
   countryId: string;
   stateId: string;
-  cityId: string;
+  cities: string[]; // Array of city names
+  cityId?: string; // Deprecated: kept for backward compatibility
   zoneName: string;
   maxAreas?: number;
   notes?: string;
@@ -51,6 +53,7 @@ export interface CreateZoneData {
 
 export interface UpdateZoneData {
   zoneName?: string;
+  cities?: string[]; // Can update cities array
   maxAreas?: number;
   status?: 'pending' | 'active' | 'inactive';
   notes?: string;
@@ -61,7 +64,8 @@ export interface ZoneStats {
   zone: {
     id: string;
     name: string;
-    city: string;
+    cities: string[]; // Array of cities
+    city: string; // Deprecated: backward compatibility
     state: string;
     country: string;
     status: string;

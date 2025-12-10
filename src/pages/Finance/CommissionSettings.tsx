@@ -604,7 +604,7 @@ const CommissionSettings: React.FC = () => {
                                   if (tx.membershipType === 'Digital Membership') setSelectedMemberType('dgc');
                                   else setSelectedMemberType('core-member');
                                 }
-                                toast.info(`Loaded context: ${tx.paidBy?.fname} from ${tx.zoneId?.zoneName || 'Unknown Zone'}`);
+                                // toast.info(`Loaded context: ${tx.paidBy?.fname} from ${tx.zoneId?.zoneName || 'Unknown Zone'}`);
                               }}
                               className={`p-3 rounded-md border cursor-pointer transition-all flex items-center justify-between group ${selectedTransaction?._id === tx._id
                                 ? 'bg-indigo-50 border-indigo-500 ring-1 ring-indigo-200'
@@ -779,7 +779,7 @@ const CommissionSettings: React.FC = () => {
                                     payments: userData.paymentVerification || []
                                   });
                                   setSelectedMembership(userData.membershipType);
-                                  toast.info(`Loaded: ${userData.fname} ${userData.lname} - ₹${userData.paymentSummary?.totalAmount?.toLocaleString()}`);
+                                  // toast.info(`Loaded: ${userData.fname} ${userData.lname} - ₹${userData.paymentSummary?.totalAmount?.toLocaleString()}`);
                                 }
                               } catch (error) {
                                 console.error('Failed to fetch user details:', error);

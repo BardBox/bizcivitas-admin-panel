@@ -70,14 +70,14 @@ const Incremental: React.FC = () => {
           {/* Icon */}
           <div className="flex flex-col  items-center">
 
-          <div className={`text-6xl flex-col items-center justify-center mb-4 ${colorStyles[stat.color].text}`}>{stat.icon}</div>
+            <div className={`text-6xl flex-col items-center justify-center mb-4 ${colorStyles[stat.color].text}`}>{stat.icon}</div>
 
-          {/* Title */}
-          <h3 className={`text-2xl font-semibold mb-2 ${colorStyles[stat.color].text}`}>{stat.title}</h3>
+            {/* Title */}
+            <h3 className={`text-2xl font-semibold mb-2 ${colorStyles[stat.color].text}`}>{stat.title}</h3>
 
-          {/* Animated Number */}
-          <p className={`text-5xl font-extrabold ${colorStyles[stat.color].text}`}>{counts[index]}+</p>
-        </div>
+            {/* Animated Number */}
+            <p className={`text-5xl font-extrabold ${colorStyles[stat.color].text}`}>{counts[index]}</p>
+          </div>
         </div>
       ))}
     </div>

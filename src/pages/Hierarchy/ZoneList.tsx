@@ -19,7 +19,8 @@ const ZoneList: React.FC = () => {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [selectedCountry, setSelectedCountry] = useState<any>(null);
     const [selectedState, setSelectedState] = useState<any>(null);
-    const [selectedCity, setSelectedCity] = useState<any>(null);
+    const [selectedCities, setSelectedCities] = useState<any[]>([]); // Changed to array for multi-select
+    const [zoneName, setZoneName] = useState(''); // Custom zone name
     const [maxAreas, setMaxAreas] = useState(10);
 
     // Queries
@@ -69,8 +70,13 @@ const ZoneList: React.FC = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!editingId && (!selectedCountry || !selectedState || !selectedCity)) {
-            toast.error('Please fill all required fields');
+        if (!editingId && (!selectedCountry || !selectedState || selectedCities.length === 0)) {
+            toast.error('Please fill all required fields and select at least one city');
+            return;
+        }
+
+        if (!editingId && !zoneName.trim()) {
+            toast.error('Please enter a zone name');
             return;
         }
 
@@ -80,11 +86,12 @@ const ZoneList: React.FC = () => {
                 payload: { maxAreas }
             });
         } else {
+            const citiesArray = selectedCities.map(city => city.name);
             createMutation.mutate({
                 countryId: selectedCountry.name,
                 stateId: selectedState.name,
-                cityId: selectedCity.name,
-                zoneName: selectedCity.name,
+                cities: citiesArray, // Send array of city names
+                zoneName: zoneName.trim(),
                 maxAreas
             });
         }
@@ -116,12 +123,29 @@ const ZoneList: React.FC = () => {
         setEditingId(null);
         setSelectedCountry(null);
         setSelectedState(null);
-        setSelectedCity(null);
+        setSelectedCities([]);
+        setZoneName('');
         setMaxAreas(10);
     };
 
     const columns = [
-        { key: 'zoneName', label: 'Zone (City)' },
+        { key: 'zoneName', label: 'Zone Name' },
+        {
+            key: 'cities',
+            label: 'Cities',
+            render: (zone: Zone) => {
+                const cities = zone.cities && zone.cities.length > 0 ? zone.cities : [zone.cityId];
+                return (
+                    <div className="flex flex-wrap gap-1">
+                        {cities.map((city, index) => (
+                            <Badge key={index} variant="default" className="text-xs">
+                                {city}
+                            </Badge>
+                        ))}
+                    </div>
+                );
+            }
+        },
         { key: 'stateId', label: 'State' },
         { key: 'countryId', label: 'Country' },
         {
@@ -211,44 +235,64 @@ const ZoneList: React.FC = () => {
             >
                 <form onSubmit={handleSubmit} className="space-y-4">
                     {!editingId && (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
-                                <Select
-                                    options={countryOptions}
-                                    value={selectedCountry}
-                                    onChange={(val) => {
-                                        setSelectedCountry(val);
-                                        setSelectedState(null);
-                                        setSelectedCity(null);
-                                    }}
-                                    placeholder="Select Country"
-                                />
+                        <>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Country *</label>
+                                    <Select
+                                        options={countryOptions}
+                                        value={selectedCountry}
+                                        onChange={(val) => {
+                                            setSelectedCountry(val);
+                                            setSelectedState(null);
+                                            setSelectedCities([]);
+                                        }}
+                                        placeholder="Select Country"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                                    <Select
+                                        options={stateOptions}
+                                        value={selectedState}
+                                        onChange={(val) => {
+                                            setSelectedState(val);
+                                            setSelectedCities([]);
+                                        }}
+                                        placeholder="Select State"
+                                        isDisabled={!selectedCountry}
+                                    />
+                                </div>
                             </div>
+
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">State *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Cities * <span className="text-xs text-gray-500">(Select multiple cities for this zone)</span>
+                                </label>
                                 <Select
-                                    options={stateOptions}
-                                    value={selectedState}
-                                    onChange={(val) => {
-                                        setSelectedState(val);
-                                        setSelectedCity(null);
-                                    }}
-                                    placeholder="Select State"
-                                    isDisabled={!selectedCountry}
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">City *</label>
-                                <Select
+                                    isMulti
                                     options={cityOptions}
-                                    value={selectedCity}
-                                    onChange={(val) => setSelectedCity(val)}
-                                    placeholder="Select City"
+                                    value={selectedCities}
+                                    onChange={(val) => setSelectedCities(val as any[])}
+                                    placeholder="Select one or more cities"
                                     isDisabled={!selectedState}
+                                    className="react-select-container"
+                                    classNamePrefix="react-select"
                                 />
+                                <p className="text-xs text-gray-500 mt-1">
+                                    Tip: Group nearby small cities (e.g., Surat, Ankleshwar, Navsari) under one Zone Partner
+                                </p>
                             </div>
-                        </div>
+
+                            <Input
+                                label="Zone Name *"
+                                value={zoneName}
+                                onChange={(e) => setZoneName(e.target.value)}
+                                placeholder="e.g., South Gujarat Zone, Mumbai Metro Zone"
+                                required
+                                helperText="Give this zone a descriptive name"
+                            />
+                        </>
                     )}
 
                     {editingId && (

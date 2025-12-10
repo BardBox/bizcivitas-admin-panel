@@ -262,7 +262,7 @@ const SidebarContent = ({
       icon: <MonetizationOnIcon />,
       link: "/finance/commission-settings",
       roles: ["admin"],
-    },  
+    },
     {
       text: "Commission Tracking",
       icon: <MonetizationOnIcon />,
@@ -279,6 +279,12 @@ const SidebarContent = ({
       text: "Roles & Permissions",
       icon: <SecurityIcon />,
       link: "/rbac/roles",
+      roles: ["admin"],
+    },
+    {
+      text: "Security Settings",
+      icon: <SecurityIcon />,
+      link: "/settings/security",
       roles: ["admin"],
     },
     {

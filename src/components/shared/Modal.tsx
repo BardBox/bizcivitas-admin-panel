@@ -47,9 +47,9 @@ const Modal: React.FC<ModalProps> = ({
       ></div>
 
       {/* Modal */}
-      <div className="flex min-h-screen items-start justify-center p-4 pt-20">
+      <div className="flex min-h-screen items-center justify-center p-4">
         <div
-          className={`relative bg-white rounded-lg shadow-xl ${sizeClasses[size]} w-full max-h-[85vh] flex flex-col`}
+          className={`relative bg-white rounded-lg shadow-xl ${sizeClasses[size]} w-full max-h-[90vh] flex flex-col`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}

@@ -64,6 +64,7 @@ import ZoneCommissionAllocation from "./pages/Finance/ZoneCommissionAllocation";
 import ZonePartnerCommissions from "./pages/Finance/ZonePartnerCommissions";
 import MembershipPlans from "./pages/Finance/MembershipPlans";
 import RoleManagement from "./pages/RBAC/RoleManagement";
+import SecuritySettings from "./pages/Settings/SecuritySettings";
 
 function App() {
   const { isLoading } = useLoadingContext();
@@ -132,6 +133,7 @@ function App() {
           <Route path="/finance/membership-plans" element={<MembershipPlans />} />
           <Route path="/finance/commission-calculator" element={<CommissionCalculator />} />
           <Route path="/rbac/roles" element={<RoleManagement />} />
+          <Route path="/settings/security" element={<SecuritySettings />} />
         </Route>
 
         {/* Admin, Master Franchise & Area Franchise Routes */}

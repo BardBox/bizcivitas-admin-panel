@@ -39,13 +39,7 @@ const AreaList: React.FC = () => {
     const [newPartnerMobile, setNewPartnerMobile] = useState('');
     const [newPartnerPassword, setNewPartnerPassword] = useState('');
 
-    // API area suggestions
-    const [apiAreas, setApiAreas] = useState<any[]>([]);
-    const [selectedApiArea, setSelectedApiArea] = useState<any>(null);
-    const [loadingApiAreas, setLoadingApiAreas] = useState(false);
-
-    // Zipcodebase API Key
-    const ZIPCODEBASE_API_KEY = import.meta.env.VITE_ZIPCODEBASE_API_KEY || 'YOUR_API_KEY_HERE';
+    // Removed: API area suggestions (no longer needed)
 
     // Queries
     const { data: areas = [], isLoading: areasLoading } = useQuery({
@@ -78,13 +72,7 @@ const AreaList: React.FC = () => {
         enabled: !!activeZoneId,
     });
 
-    // Fetch API areas when zone is selected
-    useEffect(() => {
-        if (selectedZone?.zone?.cityId && !editingId && isModalOpen) {
-            const countryId = selectedZone.zone.countryId || 'India';
-            fetchApiAreas(selectedZone.zone.cityId, countryId);
-        }
-    }, [selectedZone, editingId, isModalOpen]);
+    // Removed: API area fetching useEffect (no longer needed)
 
     // Auto-select zone for Master Franchise
     useEffect(() => {
@@ -101,134 +89,7 @@ const AreaList: React.FC = () => {
         }
     }, [isMasterFranchise, user, zones, selectedZone]);
 
-    const fetchApiAreas = async (cityName: string, countryName: string = 'India') => {
-        setLoadingApiAreas(true);
-        setApiAreas([]);
-        setSelectedApiArea(null);
-
-        console.log('🔍 Fetching areas for city:', cityName);
-
-        // Get existing areas for this zone to filter duplicates
-        const existingAreaNames = new Set(
-            areas
-                .filter((a: Area) => {
-                    const zId = typeof a.zoneId === 'object' ? a.zoneId._id : a.zoneId;
-                    return selectedZone && zId === selectedZone.value;
-                })
-                .map((a: Area) => a.areaName.toLowerCase().trim())
-        );
-
-        try {
-            // Step 1: Try FREE India Post Office API first (for Indian cities)
-            const indiaApiUrl = `https://api.postalpincode.in/postoffice/${encodeURIComponent(cityName)}`;
-            console.log('📡 Trying India Post API:', indiaApiUrl);
-
-            const indiaResponse = await fetch(indiaApiUrl);
-            const indiaData = await indiaResponse.json();
-
-            // Check if India API returned results
-            if (indiaResponse.ok && indiaData[0]?.Status === 'Success' && indiaData[0]?.PostOffice?.length > 0) {
-                console.log('✅ India API Success!');
-                const postOffices = indiaData[0].PostOffice;
-                const areasFromApi: any[] = [];
-                const areaMap = new Map();
-
-                postOffices.forEach((po: any) => {
-                    const areaName = po.Name;
-                    const pincode = po.Pincode;
-
-                    if (areaName && pincode && !areaMap.has(areaName)) {
-                        // Filter out existing areas
-                        if (existingAreaNames.has(areaName.toLowerCase().trim())) {
-                            return;
-                        }
-
-                        areaMap.set(areaName, pincode);
-                        areasFromApi.push({
-                            label: `${areaName} (${pincode})`,
-                            value: areaName,
-                            pincode: pincode,
-                        });
-                    }
-                });
-
-                console.log('✅ Areas from India API:', areasFromApi.length);
-                setApiAreas(areasFromApi);
-                toast.success(`Found ${areasFromApi.length} new areas in ${cityName} (India)!`);
-                return; // Success, exit function
-            }
-
-            // Step 2: India API failed, try Zipcodebase API (for international cities)
-            console.log('⚠️ India API failed, trying Zipcodebase API for international cities...');
-
-            // Map country names to ISO codes
-            const countryCodeMap: any = {
-                'India': 'IN',
-                'UAE': 'AE',
-                'United Arab Emirates': 'AE',
-                'USA': 'US',
-                'United States': 'US',
-                'UK': 'GB',
-                'United Kingdom': 'GB',
-                'Canada': 'CA',
-                'Australia': 'AU',
-                'Singapore': 'SG',
-                // Add more as needed
-            };
-
-            const countryCode = countryCodeMap[countryName] || 'IN'; // Default to India
-            const zipcodeApiUrl = `https://app.zipcodebase.com/api/v1/search?apikey=${ZIPCODEBASE_API_KEY}&city=${encodeURIComponent(cityName)}&country=${countryCode}`;
-
-            console.log(`🌍 Using country: ${countryName} (${countryCode})`);
-
-            console.log('📡 Trying Zipcodebase API:', zipcodeApiUrl);
-
-            const zipcodeResponse = await fetch(zipcodeApiUrl);
-            const zipcodeData = await zipcodeResponse.json();
-
-            if (zipcodeResponse.ok && zipcodeData.results && Object.keys(zipcodeData.results).length > 0) {
-                console.log('✅ Zipcodebase API Success!');
-                const areasFromApi: any[] = [];
-                const areaMap = new Map();
-
-                Object.entries(zipcodeData.results).forEach(([pincode, locations]: [string, any]) => {
-                    locations.forEach((loc: any) => {
-                        const areaName = loc.province_en || loc.city_en || loc.state_en;
-                        if (areaName && !areaMap.has(areaName)) {
-                            // Filter out existing areas
-                            if (existingAreaNames.has(areaName.toLowerCase().trim())) {
-                                return;
-                            }
-
-                            areaMap.set(areaName, pincode);
-                            areasFromApi.push({
-                                label: `${areaName} (${pincode})`,
-                                value: areaName,
-                                pincode: pincode,
-                            });
-                        }
-                    });
-                });
-
-                console.log('✅ Areas from Zipcodebase:', areasFromApi.length);
-                setApiAreas(areasFromApi);
-                toast.success(`Found ${areasFromApi.length} new areas in ${cityName}!`);
-                return; // Success, exit function
-            }
-
-            // Step 3: Both APIs failed
-            console.log('⚠️ Both APIs returned no results');
-            setApiAreas([]);
-            toast.info(`No areas found for "${cityName}". Please enter manually.`);
-
-        } catch (error: any) {
-            console.error('❌ Error fetching API areas:', error);
-            setApiAreas([]);
-            toast.warning('API unavailable. Please enter area manually.');
-        } finally {
-            setLoadingApiAreas(false);
-        }
-    };
+    // Removed: fetchApiAreas function (no longer needed)
 
     // Mutations
     const createMutation = useMutation({
@@ -375,9 +236,6 @@ const AreaList: React.FC = () => {
         setCapacity(100);
         setDescription('');
         setPincode('');
-        setApiAreas([]);
-        setSelectedApiArea(null);
-        setLoadingApiAreas(false);
     };
 
     const resetPartnerForm = () => {
@@ -440,13 +298,7 @@ const AreaList: React.FC = () => {
         }
     };
 
-    const handleApiAreaSelection = (option: any) => {
-        setSelectedApiArea(option);
-        if (option) {
-            setAreaName(option.value);
-            setPincode(option.pincode);
-        }
-    };
+    // Removed: handleApiAreaSelection function (no longer needed)
 
     const columns = [
         {
@@ -617,39 +469,21 @@ const AreaList: React.FC = () => {
                             </div>
                         )}
 
-                        {/* Area Name - Dropdown with API or Manual Entry */}
+                        {/* Area Name - Manual Entry Only */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Area Name <span className="text-red-500">*</span>
-                                {loadingApiAreas && <span className="text-blue-600 ml-2">(Loading areas...)</span>}
-                            </label>
-                            {apiAreas.length > 0 && !editingId ? (
-                                <Select
-                                    options={apiAreas}
-                                    value={selectedApiArea}
-                                    onChange={handleApiAreaSelection}
-                                    placeholder="Select an area from API"
-                                    isSearchable
-                                    isClearable
-                                    isDisabled={loadingApiAreas}
-                                    isLoading={loadingApiAreas}
-                                />
-                            ) : (
-                                <Input
-                                    value={areaName}
-                                    onChange={(e) => setAreaName(e.target.value)}
-                                    required
-                                    placeholder="e.g., Downtown"
-                                    disabled={loadingApiAreas}
-                                />
-                            )}
-                            <p className="mt-1 text-sm text-gray-500">
-                                {apiAreas.length > 0 && !editingId
-                                    ? "Select from API suggestions or clear to enter manually"
-                                    : editingId
+                            <Input
+                                label="Area Name"
+                                value={areaName}
+                                onChange={(e) => setAreaName(e.target.value)}
+                                required
+                                placeholder="e.g., Downtown, Jawahar Nagar, MG Road"
+                                disabled={!!editingId}
+                                helperText={
+                                    editingId
                                         ? "Area name cannot be changed while editing"
-                                        : "Enter area name manually"}
-                            </p>
+                                        : "Enter the area/locality name"
+                                }
+                            />
                         </div>
 
                         <div>
@@ -671,11 +505,11 @@ const AreaList: React.FC = () => {
                         {/* Pincode & Description */}
                         <div>
                             <Input
-                                label="Pincode"
+                                label="Pincode(s)"
                                 value={pincode}
                                 onChange={(e) => setPincode(e.target.value)}
-                                placeholder="e.g., 390001"
-                                helperText={selectedApiArea ? "Auto-filled from API (editable)" : "Enter area pincode"}
+                                placeholder="e.g., 390001, 390002"
+                                helperText="Enter comma-separated pincodes for this area"
                             />
                         </div>
 

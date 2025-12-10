@@ -1,9 +1,27 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { Edit, Trash2 } from 'lucide-react';
 import api from "../../api/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useVisibility } from "../../context/VisibilityContext";
 import { CSVLink } from "react-csv";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  TablePagination,
+  TextField,
+  TableSortLabel,
+  Select,
+  MenuItem,
+  FormControl,
+  Box,
+} from "@mui/material";
+import TwoFactorVerifyModal from "../../component/TwoFactorVerifyModal"; // ✅ Import 2FA Modal
 
 // Define roles and membership types
 // ✅ UPDATED RBAC ROLES - Matches backend constants
@@ -27,12 +45,49 @@ const membershipTypes = [
   "Digital Membership Trial",
 ];
 
+const REQUIRED_FEES: Record<string, string[]> = {
+  "Core Membership": ["Registration", "Annual", "Community_launching"],
+  "Flagship Membership": ["Registration", "Annual", "Community_launching"],
+  "Industria Membership": ["Registration", "Annual", "Community_launching"],
+  "Digital Membership": ["Registration"],
+};
+
+const getRequiredPaymentCount = (membershipType?: string) => {
+  if (!membershipType) return 0;
+  return REQUIRED_FEES[membershipType]?.length || 0;
+};
+
+const normalizeFeeType = (feeType: string) => {
+  return feeType.toLowerCase().replace(/[_\s]+/g, " ").trim();
+};
+
+const getAllPaymentsForDisplay = (user: any) => {
+  const existing = user.paymentVerification || [];
+  if (!user.membershipType) return existing;
+
+  const required = REQUIRED_FEES[user.membershipType] || [];
+  const paidTypes = new Set(existing.map((p: any) => normalizeFeeType(p.feeType)));
+
+  const missing = required.filter((t: string) => !paidTypes.has(normalizeFeeType(t))).map((feeType: string) => ({
+    feeType,
+    amount: 0,
+    status: "pending",
+    transactionId: null,
+    date: undefined
+  }));
+
+  return [...existing, ...missing];
+};
+
 interface PaymentVerification {
   feeType: string;
   amount: number;
-  status: string;
-  transactionId?: string | null;
+  status: 'pending' | 'completed';
   date?: string;
+  transactionId?: string;
+  razorpayPaymentId?: string;
+  cashId?: string;
+  checkId?: string;
   _id?: string;
 }
 
@@ -101,9 +156,20 @@ const CustomersPage: React.FC = () => {
     "add"
   );
   const [selectedUser, setSelectedUser] = useState<Customer | null>(null);
-  const [showDeleteConfirmation, setShowDeleteConfirmation] =
-    useState<boolean>(false);
-  const [userToDelete, setUserToDelete] = useState<Customer | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
+  const [viewPaymentUser, setViewPaymentUser] = useState<Customer | null>(null);
+
+  const openPaymentModal = (user: any) => {
+    console.log("Opening Payment Modal for:", user);
+    console.log("Payment Verification Data:", user.paymentVerification);
+    setViewPaymentUser(user);
+    setShowPaymentModal(true);
+  };
+
+  const closePaymentModal = () => {
+    setShowPaymentModal(false);
+    setViewPaymentUser(null);
+  };
 
   const [formData, setFormData] = useState({
     fname: "",
@@ -127,6 +193,67 @@ const CustomersPage: React.FC = () => {
   const [touchedFields, setTouchedFields] = useState<{
     [key: string]: boolean;
   }>({});
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const [columnFilters, setColumnFilters] = useState<{ [key: string]: string }>({});
+
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
+  const handleChangePage = (_event: unknown, newPage: number) => {
+    setPage(newPage);
+  };
+
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setRowsPerPage(parseInt(event.target.value, 10));
+    setPage(0);
+  };
+
+  // 2FA Security State
+  const [is2FAModalOpen, set2FAModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
+
+  // Callback when 2FA is verified successfully
+  const on2FASuccess = async () => {
+    set2FAModalOpen(false);
+    if (pendingAction) {
+      await pendingAction();
+      setPendingAction(null);
+    }
+  };
+
+  const handleDeleteUser = async (id?: string) => {
+    // defined targetId using passed id or fall back to selectedUser?._id if no id provided.
+    // However, usually we should just use the passed id to be safe.
+    const targetId = id;
+
+    if (!targetId) {
+      toast.error("No user selected for deletion.");
+      return;
+    }
+
+    // 1. Define the actual delete logic as a function
+    const executeDelete = async () => {
+      try {
+        const response = await api.delete(`/users/delete/${targetId}`); // API endpoint to delete user
+
+        if (response.data.success) {
+          setCustomers((prev) => prev.filter((u) => u._id !== targetId));
+          // Delete confirmation dialog is managed via 2FA modal now
+          setShowModal(false);
+          setSelectedUser(null);
+          toast.success("User deleted successfully!");
+          fetchData();
+        }
+      } catch (error: any) {
+        console.error("Error deleting user:", error.response?.data?.message || error.message);
+        toast.error("Failed to delete user.");
+      }
+    };
+
+    // 2. Trigger 2FA Modal instead of deleting directly
+    setPendingAction(() => executeDelete);
+    set2FAModalOpen(true);
+  };
 
   const fetchData = async () => {
     try {
@@ -233,11 +360,11 @@ const CustomersPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    setSidebarAndHeaderVisibility(!showModal && !showDeleteConfirmation);
+    setSidebarAndHeaderVisibility(!showModal);
     return () => {
       setSidebarAndHeaderVisibility(true);
     };
-  }, [showModal, showDeleteConfirmation, setSidebarAndHeaderVisibility]);
+  }, [showModal, setSidebarAndHeaderVisibility]);
 
   const handleDuplicateKeyErrors = (error: any) => {
     const duplicateFields = error.response?.data?.error?.duplicateFields || [];
@@ -532,36 +659,7 @@ const CustomersPage: React.FC = () => {
     }
   };
 
-  const handleDeleteUser = async () => {
-    if (!userToDelete) return;
 
-    try {
-      const response = await api.delete(`/users/delete/${userToDelete._id}`);
-      if (response.data.success) {
-        toast.success("User deleted successfully!", {
-          position: "top-center",
-          autoClose: 2000,
-        });
-        setShowDeleteConfirmation(false);
-        setUserToDelete(null);
-        setShowModal(false); // Close the form modal
-        setSelectedUser(null); // Clear selected user
-
-        // Refresh data
-        await fetchData();
-      } else {
-        throw new Error(response.data.message || "Failed to delete user.");
-      }
-    } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.message ||
-        "Error deleting user. Please try again.";
-      toast.error(errorMessage, {
-        position: "top-center",
-        autoClose: 3000,
-      });
-    }
-  };
 
   // const openAddModal = () => {
   //   setModalType("add");
@@ -610,14 +708,25 @@ const CustomersPage: React.FC = () => {
     setTouchedFields({});
   };
 
-  const openDeleteConfirmation = (user: Customer) => {
-    setUserToDelete(user);
-    setShowDeleteConfirmation(true);
-  };
+
 
   useEffect(() => {
     validateRealTime();
   }, [formData, touchedFields]);
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
+  // Extract unique membership types for filter dropdown
+  const uniqueMembershipTypes = useMemo(() => {
+    const types = new Set(customers.map((c) => c.membershipType).filter(Boolean));
+    return Array.from(types).sort();
+  }, [customers]);
 
   const filteredCustomers = customers.filter(
     (customer) =>
@@ -631,8 +740,34 @@ const CustomersPage: React.FC = () => {
         customer.membershipType === selectedMembershipType) &&
       (selectedPaymentVerificationStatus === "" ||
         customer.paymentVerificationStatus?.toString() ===
-        selectedPaymentVerificationStatus)
+        selectedPaymentVerificationStatus) &&
+      (!columnFilters.name || `${customer.fname} ${customer.lname}`.toLowerCase().includes(columnFilters.name.toLowerCase())) &&
+      (!columnFilters.email || customer.email.toLowerCase().includes(columnFilters.email.toLowerCase())) &&
+      (!columnFilters.membershipType || customer.membershipType?.toLowerCase().includes(columnFilters.membershipType.toLowerCase()))
   );
+
+  if (sortConfig) {
+    filteredCustomers.sort((a: any, b: any) => {
+      let aValue = (a as any)[sortConfig.key];
+      let bValue = (b as any)[sortConfig.key];
+
+      if (sortConfig.key === 'name') {
+        aValue = `${a.fname} ${a.lname}`.toLowerCase();
+        bValue = `${b.fname} ${b.lname}`.toLowerCase();
+      } else if (typeof aValue === 'string') {
+        aValue = aValue.toLowerCase();
+        bValue = bValue ? bValue.toLowerCase() : '';
+      }
+
+      if (aValue < bValue) {
+        return sortConfig.direction === 'asc' ? -1 : 1;
+      }
+      if (aValue > bValue) {
+        return sortConfig.direction === 'asc' ? 1 : -1;
+      }
+      return 0;
+    });
+  }
 
   const csvData = [
     [
@@ -702,9 +837,13 @@ const CustomersPage: React.FC = () => {
     formData.membershipType === "Digital Membership Trial";
 
   return (
-    <div
-      className={`w-full min-h-screen flex flex-col items-center ${!isSidebarAndHeaderVisible ? "mt-0" : ""
-        }`}
+    <Box
+      className={`w-full flex flex-col items-center ${!isSidebarAndHeaderVisible ? "mt-0" : ""}`}
+      sx={{
+        height: '100vh',
+        overflowY: 'auto',
+        overflowX: 'auto',
+      }}
     >
       {loading && (
         <p className="text-center text-blue-600 font-semibold">
@@ -801,7 +940,7 @@ const CustomersPage: React.FC = () => {
                   <div className="flex space-x-4">
                     {modalType === "update" && (
                       <button
-                        onClick={() => openDeleteConfirmation(selectedUser!)}
+                        onClick={() => handleDeleteUser(selectedUser?._id)}
                         className="text-red-600 hover:text-red-800"
                       >
                         Delete
@@ -932,8 +1071,8 @@ const CustomersPage: React.FC = () => {
                           }}
                           onBlur={() => handleFieldBlur("username")}
                           className={`mt-1 p-2 border ${errors.username
-                              ? "border-red-500"
-                              : "border-gray-300"
+                            ? "border-red-500"
+                            : "border-gray-300"
                             } rounded-md w-full`}
                         />
                         {errors.username && (
@@ -1087,8 +1226,8 @@ const CustomersPage: React.FC = () => {
                             }
                             onBlur={() => handleFieldBlur("state")}
                             className={`mt-1 p-2 border ${errors.state
-                                ? "border-red-500"
-                                : "border-gray-300"
+                              ? "border-red-500"
+                              : "border-gray-300"
                               } rounded-md w-full`}
                             required
                           />
@@ -1113,8 +1252,8 @@ const CustomersPage: React.FC = () => {
                             }
                             onBlur={() => handleFieldBlur("country")}
                             className={`mt-1 p-2 border ${errors.country
-                                ? "border-red-500"
-                                : "border-gray-300"
+                              ? "border-red-500"
+                              : "border-gray-300"
                               } rounded-md w-full`}
                             required
                           />
@@ -1173,122 +1312,312 @@ const CustomersPage: React.FC = () => {
             </div>
           )}
 
-          {showDeleteConfirmation && (
-            <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
-              <div className="bg-white p-6 rounded-lg w-full max-w-md">
-                <h2 className="text-xl font-semibold mb-4">Confirm Deletion</h2>
-                <p className="mb-6">
-                  Are you sure you want to delete this user?
-                </p>
-                <div className="flex justify-end space-x-4">
-                  <button
-                    onClick={() => {
-                      setShowDeleteConfirmation(false);
-                      setUserToDelete(null);
-                    }}
-                    className="px-4 py-2 bg-gray-300 text-gray-800 rounded-md hover:bg-gray-400"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleDeleteUser}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
-                  >
-                    Delete
-                  </button>
+
+
+          <Paper sx={{ width: '100%', boxShadow: 2, borderRadius: 2, overflow: 'visible' }}>
+            <TableContainer sx={{ overflow: 'visible' }}>
+              <Table size="small" aria-label="sticky table" sx={{ '& .MuiTableCell-root': { padding: '4px 8px' }, minWidth: 1600 }}>
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 200 }}>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <TableSortLabel
+                            active={sortConfig?.key === 'name'}
+                            direction={sortConfig?.key === 'name' ? sortConfig.direction : 'asc'}
+                            onClick={() => handleSort('name')}
+                          >
+                            Name
+                          </TableSortLabel>
+                        </div>
+                        <TextField
+                          variant="outlined"
+                          size="small"
+                          placeholder="Filter..."
+                          value={columnFilters.name || ''}
+                          onChange={(e) => setColumnFilters({ ...columnFilters, name: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
+                          sx={{ '& .MuiInputBase-root': { fontSize: '0.8rem', backgroundColor: 'white' } }}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 200 }}>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <TableSortLabel
+                            active={sortConfig?.key === 'email'}
+                            direction={sortConfig?.key === 'email' ? sortConfig.direction : 'asc'}
+                            onClick={() => handleSort('email')}
+                          >
+                            Email
+                          </TableSortLabel>
+                        </div>
+                        <TextField
+                          variant="outlined"
+                          size="small"
+                          placeholder="Filter..."
+                          value={columnFilters.email || ''}
+                          onChange={(e) => setColumnFilters({ ...columnFilters, email: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
+                          sx={{ '& .MuiInputBase-root': { fontSize: '0.8rem', backgroundColor: 'white' } }}
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 120 }}>Mobile</TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 150 }}>Location</TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 100 }}>Role</TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 150 }}>Referred By</TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 100 }}>Username</TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 200 }}>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between">
+                          <TableSortLabel
+                            active={sortConfig?.key === 'membershipType'}
+                            direction={sortConfig?.key === 'membershipType' ? sortConfig.direction : 'asc'}
+                            onClick={() => handleSort('membershipType')}
+                          >
+                            Membership
+                          </TableSortLabel>
+                        </div>
+                        <FormControl size="small" fullWidth sx={{ backgroundColor: 'white', borderRadius: 1 }}>
+                          <Select
+                            value={columnFilters.membershipType || ''}
+                            onChange={(e) => setColumnFilters({ ...columnFilters, membershipType: e.target.value })}
+                            displayEmpty
+                            variant="outlined"
+                            onClick={(e) => e.stopPropagation()}
+                            sx={{ fontSize: '0.8rem', height: 32 }}
+                          >
+                            <MenuItem value="">
+                              <em className="text-gray-400">All</em>
+                            </MenuItem>
+                            {uniqueMembershipTypes.map((type) => (
+                              <MenuItem key={type} value={type} sx={{ fontSize: '0.8rem' }}>
+                                {type}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </div>
+                    </TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 120 }}>
+                      <TableSortLabel
+                        active={sortConfig?.key === 'totalPaidAmount'}
+                        direction={sortConfig?.key === 'totalPaidAmount' ? sortConfig.direction : 'asc'}
+                        onClick={() => handleSort('totalPaidAmount')}
+                      >
+                        Total Paid
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 120 }}>
+                      <TableSortLabel
+                        active={sortConfig?.key === 'renewalDate'}
+                        direction={sortConfig?.key === 'renewalDate' ? sortConfig.direction : 'asc'}
+                        onClick={() => handleSort('renewalDate')}
+                      >
+                        Renewal Date
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 140 }}>Payment Info</TableCell>
+                    <TableCell sx={{ backgroundColor: '#f9fafb', minWidth: 80 }}>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredCustomers
+                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                    .map((customer) => {
+                      return (
+                        <TableRow hover role="checkbox" tabIndex={-1} key={customer._id}>
+                          <TableCell sx={{ fontWeight: 500 }}>
+                            {customer.fname} {customer.lname}
+                          </TableCell>
+                          <TableCell>{customer.email}</TableCell>
+                          <TableCell>{customer.mobile}</TableCell>
+                          <TableCell>
+                            {customer.membershipType === "Digital Membership" ||
+                              customer.membershipType === "Digital Membership Trial"
+                              ? `${customer.city || ""}, ${customer.state || ""}, ${customer.country || ""
+                                }`.replace(/^,\s*|,\s*$/g, "") || "-"
+                              : customer.region || "-"}
+                          </TableCell>
+                          <TableCell>{customer.role}</TableCell>
+                          <TableCell>
+                            {coreMembers.find((member) => member._id === customer.referBy)
+                              ? `${coreMembers.find((member) => member._id === customer.referBy)?.fname} ${coreMembers.find((member) => member._id === customer.referBy)?.lname}`
+                              : customer.referBy || "-"}
+                          </TableCell>
+                          <TableCell>{customer.username || "-"}</TableCell>
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${customer.membershipType?.includes('Core') ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
+                              {customer.membershipType || "-"}
+                            </span>
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 'bold' }}>₹{customer.totalPaidAmount}</TableCell>
+                          <TableCell>{customer.renewalDate || "-"}</TableCell>
+                          <TableCell
+                            className="text-center cursor-pointer hover:bg-gray-50"
+                            onClick={() => openPaymentModal(customer)}
+                            sx={{ cursor: 'pointer' }}
+                          >
+                            <div className={`font-semibold text-xs ${customer.paymentVerificationStatus ? "text-green-600" : "text-yellow-600"}`}>
+                              {customer.paymentVerificationStatus ? "Verified" : "Not Verified"}
+                            </div>
+                            <div className="text-xs">
+                              Comp: {customer.paymentVerification?.filter(p => p.status === 'completed').length || 0}
+                              <span className="mx-1">/</span>
+                              Req: {getRequiredPaymentCount(customer.membershipType)}
+                            </div>
+                            {(customer.paymentVerification?.filter(p => p.status === 'completed').length || 0) < getRequiredPaymentCount(customer.membershipType) && (
+                              <div className="text-red-500 text-xs font-bold animate-pulse">
+                                ⚠️ Incomplete
+                              </div>
+                            )}
+                            <div className="text-blue-600 text-xs underline">View</div>
+                          </TableCell>
+                          <TableCell>
+                            <button
+                              onClick={() => openUpdateModal(customer)}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                              title="Edit User"
+                            >
+                              <Edit size={18} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteUser(customer._id)}
+                              className="ml-2 p-1 text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                              title="Delete User"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  {filteredCustomers.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={12} align="center">
+                        No users found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              rowsPerPageOptions={[10, 25, 100]}
+              component="div"
+              count={filteredCustomers.length}
+              rowsPerPage={rowsPerPage}
+              page={page}
+              onPageChange={handleChangePage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+            />
+          </Paper>
+        </div>
+      )
+      }
+      {/* Payment Details Modal */}
+      {
+        showPaymentModal && viewPaymentUser && (
+          <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
+            <div className="bg-white p-6 rounded-lg w-full max-w-3xl max-h-[90vh] flex flex-col">
+              <div className="flex justify-between items-center mb-4 border-b pb-2">
+                <h2 className="text-xl font-bold text-gray-800">
+                  Payment History: {viewPaymentUser.fname} {viewPaymentUser.lname}
+                </h2>
+                <button
+                  onClick={closePaymentModal}
+                  className="text-gray-600 hover:text-gray-900 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="overflow-y-auto mb-4">
+                <div className="grid grid-cols-4 gap-4 mb-4">
+                  <div className="bg-blue-50 p-3 rounded-md">
+                    <p className="text-sm text-gray-500">Total Paid</p>
+                    <p className="text-xl font-bold text-blue-700">₹{viewPaymentUser.totalPaidAmount}</p>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <p className="text-sm text-gray-500">Membership</p>
+                    <p className="text-xl font-bold text-gray-700">{viewPaymentUser.membershipType}</p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-md">
+                    <p className="text-sm text-gray-500">Renewal Date</p>
+                    <p className="text-xl font-bold text-green-700">{viewPaymentUser.renewalDate || "-"}</p>
+                  </div>
+                  <div className="bg-purple-50 p-3 rounded-md">
+                    <p className="text-sm text-gray-500">Member Since</p>
+                    <p className="text-xl font-bold text-purple-700">{viewPaymentUser.createdAt || "-"}</p>
+                  </div>
                 </div>
+
+                <table className="w-full text-left border-collapse border border-gray-200">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="p-2 border border-gray-200">Fee Type</th>
+                      <th className="p-2 border border-gray-200">Amount</th>
+                      <th className="p-2 border border-gray-200">Status</th>
+                      <th className="p-2 border border-gray-200">Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {getAllPaymentsForDisplay(viewPaymentUser).length > 0 ? (
+                      getAllPaymentsForDisplay(viewPaymentUser).map((payment: any, index: number) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="p-2 border border-gray-200 capitalize">{payment.feeType.replace(/_/g, " ")}</td>
+                          <td className="p-2 border border-gray-200 font-medium">
+                            {payment.status === 'pending' ? (
+                              <span className="text-gray-400">-</span>
+                            ) : (
+                              `₹${payment.amount}`
+                            )}
+                          </td>
+                          <td className="p-2 border border-gray-200">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${payment.status === 'completed'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-red-100 text-red-800 animate-pulse'
+                              }`}>
+                              {payment.status}
+                            </span>
+                          </td>
+                          <td className="p-2 border border-gray-200 text-xs">
+                            {payment.status === 'pending' ? (
+                              <span className="text-red-500 font-semibold">Payment Due</span>
+                            ) : (
+                              <>
+                                <div>ID: {payment.transactionId || payment.razorpayPaymentId || payment.cashId || payment.checkId || "N/A"}</div>
+                                {payment.date && <div className="text-gray-500">{new Date(payment.date).toLocaleDateString()}</div>}
+                              </>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr><td colSpan={4} className="p-4 text-center">No records</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t">
+                <button onClick={closePaymentModal} className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700">Close</button>
               </div>
             </div>
-          )}
-
-          <div className="overflow-y-auto">
-            <table className="w-full table-auto border-collapse border">
-              <thead className="text-black">
-                <tr>
-                  <th className="border px-8 py-2">Name</th>
-                  <th className="border px-4 py-2">Email</th>
-                  <th className="border px-4 py-2">Mobile</th>
-                  <th className="border px-4 py-2">Location</th>
-                  <th className="border px-4 py-2">Role</th>
-                  <th className="border px-4 py-2">Referred By</th>
-                  <th className="border px-4 py-2">Username</th>
-                  <th className="border px-4 py-2">Membership Type</th>
-                  <th className="border px-4 py-2">Renewal Date</th>
-                  <th className="border px-4 py-2">
-                    Payment Verification Status
-                  </th>
-                  <th className="border px-4 py-2">Edit</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCustomers.length > 0 ? (
-                  filteredCustomers.map((customer) => (
-                    <tr key={customer._id}>
-                      <td className="border px-8 py-2">
-                        {customer.fname} {customer.lname}
-                      </td>
-                      <td className="border px-4 py-2">{customer.email}</td>
-                      <td className="border px-4 py-2">{customer.mobile}</td>
-                      <td className="border px-4 py-2">
-                        {customer.membershipType === "Digital Membership" ||
-                          customer.membershipType === "Digital Membership Trial"
-                          ? `${customer.city || ""}, ${customer.state || ""}, ${customer.country || ""
-                            }`.replace(/^,\s*|,\s*$/g, "") || "-"
-                          : customer.region || "-"}
-                      </td>
-                      <td className="border px-4 py-2">{customer.role}</td>
-                      <td className="border px-4 py-2">
-                        {coreMembers.find(
-                          (member) => member._id === customer.referBy
-                        )
-                          ? `${coreMembers.find(
-                            (member) => member._id === customer.referBy
-                          )?.fname
-                          } ${coreMembers.find(
-                            (member) => member._id === customer.referBy
-                          )?.lname
-                          }`
-                          : customer.referBy || "-"}
-                      </td>
-                      <td className="border px-4 py-2">
-                        {customer.username || "-"}
-                      </td>
-                      <td className="border px-4 py-2">
-                        {customer.membershipType || "-"}
-                      </td>
-                      <td className="border px-4 py-2">
-                        {customer.renewalDate || "-"}
-                      </td>
-                      <td className="border px-4 py-2">
-                        {customer.paymentVerificationStatus
-                          ? "Verified"
-                          : "Not Verified"}
-                      </td>
-                      <td className="border px-4 py-2">
-                        <button
-                          onClick={() => openUpdateModal(customer)}
-                          className="px-2 py-1 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 w-full"
-                        >
-                          Edit
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={11} className="text-center py-6 text-gray-600">
-                      No users found. Please check API response or network
-                      connectivity.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
           </div>
-        </div>
-      )}
+        )
+      }
       <ToastContainer />
-    </div>
+
+      {/* 2FA Verification Modal */}
+      <TwoFactorVerifyModal
+        open={is2FAModalOpen}
+        onClose={() => set2FAModalOpen(false)}
+        onSuccess={on2FASuccess}
+        title="Security Verification"
+      />
+    </Box >
   );
 };
 

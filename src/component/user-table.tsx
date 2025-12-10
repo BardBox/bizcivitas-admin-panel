@@ -31,8 +31,8 @@ const UserTable: React.FC = () => {
             renewalDueDate: new Date(user.renewalDueDate).toLocaleDateString(),
           }));
 
-          // ✅ Get the last 5 users only
-          const lastFiveUsers = mappedUsers.slice(-6).reverse();
+          // ✅ Get the top 5 users (Backend already sorts by latest)
+          const lastFiveUsers = mappedUsers.slice(0, 5);
 
           setUsers(lastFiveUsers);
         }
@@ -77,11 +77,10 @@ const UserTable: React.FC = () => {
             {users.length > 0 ? (
               users.map((user, index) => (
                 <tr
-                    key={index}
-                    className={`border-b border-gray-200 transition-all duration-300 hover:bg-blue-100 ${
-                      index % 2 === 0 ? "bg-blue-50" : "bg-white"
+                  key={index}
+                  className={`border-b border-gray-200 transition-all duration-300 hover:bg-blue-100 ${index % 2 === 0 ? "bg-blue-50" : "bg-white"
                     }`}
-                  >
+                >
                   <td className="px-6 py-3 text-lg text-gray-800 whitespace-nowrap">{user.firstName}</td>
                   <td className="px-6 py-3 text-lg text-gray-800 whitespace-nowrap">{user.lastName}</td>
                   <td className="px-6 py-3 text-lg text-gray-800 whitespace-nowrap overflow-hidden text-ellipsis max-w-[150px]">{user.email}</td>

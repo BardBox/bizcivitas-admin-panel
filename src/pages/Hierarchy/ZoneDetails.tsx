@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Edit, Trash2, ArrowLeft } from 'lucide-react';
+import { Edit, Trash2, ArrowLeft, UserPlus } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Select from 'react-select';
@@ -10,12 +10,14 @@ import { getZoneById } from '../../api/zoneApi';
 import { getAreasByZone, createArea, updateArea, deleteArea, assignAreaFranchise, Area } from '../../api/areaApi';
 import { getUsersByRole, FranchiseUser, createFranchiseUser, CreateFranchiseData } from '../../api/franchiseApi';
 import { toast } from 'react-toastify';
+import FranchisePartnerModal from '../../components/franchise/FranchisePartnerModal';
 
 const ZoneDetails: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isZonePartnerModalOpen, setIsZonePartnerModalOpen] = useState(false);
 
     // Form State
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -23,11 +25,6 @@ const ZoneDetails: React.FC = () => {
     const [capacity, setCapacity] = useState(100);
     const [description, setDescription] = useState('');
     const [pincode, setPincode] = useState('');
-
-    // API area suggestions
-    const [apiAreas, setApiAreas] = useState<any[]>([]);
-    const [selectedApiArea, setSelectedApiArea] = useState<any>(null);
-    const [loadingApiAreas, setLoadingApiAreas] = useState(false);
 
     // Step 2: Partner assignment modal
     const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
@@ -42,8 +39,7 @@ const ZoneDetails: React.FC = () => {
     const [newPartnerMobile, setNewPartnerMobile] = useState('');
     const [newPartnerPassword, setNewPartnerPassword] = useState('');
 
-    // Zipcodebase API Key
-    const ZIPCODEBASE_API_KEY = import.meta.env.VITE_ZIPCODEBASE_API_KEY || 'YOUR_API_KEY_HERE';
+    // Removed: Zipcodebase API Key (no longer needed)
 
     // Queries
     const { data: zone, isLoading: zoneLoading } = useQuery({
@@ -170,135 +166,7 @@ const ZoneDetails: React.FC = () => {
         }
     });
 
-    // Fetch API areas when zone is available (for new area creation)
-    useEffect(() => {
-        if (zone?.cityId && !editingId && isModalOpen) {
-            const countryId = zone.countryId || 'India';
-            fetchApiAreas(zone.cityId, countryId);
-        }
-    }, [zone, editingId, isModalOpen]);
-
-    // Hybrid API fetching function (India Post + Zipcodebase fallback)
-    const fetchApiAreas = async (cityName: string, countryName: string = 'India') => {
-        setLoadingApiAreas(true);
-        setApiAreas([]);
-        setSelectedApiArea(null);
-
-        console.log(`🌍 Fetching areas for city: "${cityName}" in country: "${countryName}"`);
-
-        try {
-            // Step 1: Try FREE India Post Office API first (for Indian cities)
-            const indiaApiUrl = `https://api.postalpincode.in/postoffice/${encodeURIComponent(cityName)}`;
-            console.log('🇮🇳 Trying India Post Office API...');
-            const indiaResponse = await fetch(indiaApiUrl);
-            const indiaData = await indiaResponse.json();
-
-            if (indiaResponse.ok && indiaData[0]?.Status === 'Success' && indiaData[0]?.PostOffice?.length > 0) {
-                const postOffices = indiaData[0].PostOffice;
-                const areasFromApi: any[] = [];
-                const areaMap = new Map();
-
-                postOffices.forEach((po: any) => {
-                    const areaName = po.Name;
-                    const pincode = po.Pincode;
-                    if (areaName && pincode && !areaMap.has(areaName)) {
-                        areaMap.set(areaName, pincode);
-                        areasFromApi.push({
-                            label: `${areaName} (${pincode})`,
-                            value: areaName,
-                            pincode: pincode,
-                        });
-                    }
-                });
-
-                console.log(`✅ India API Success! Found ${areasFromApi.length} areas`);
-                setApiAreas(areasFromApi);
-                toast.success(`Found ${areasFromApi.length} areas in ${cityName} (India)!`);
-                setLoadingApiAreas(false);
-                return;
-            }
-
-            console.log('⚠️ India API returned no results, trying international API...');
-
-            // Step 2: India API failed, try Zipcodebase API (for international cities)
-            const countryCodeMap: any = {
-                'India': 'IN',
-                'UAE': 'AE',
-                'United Arab Emirates': 'AE',
-                'USA': 'US',
-                'United States': 'US',
-                'UK': 'GB',
-                'United Kingdom': 'GB',
-                'Canada': 'CA',
-                'Australia': 'AU',
-                'Singapore': 'SG',
-                'Germany': 'DE',
-                'France': 'FR',
-                'Italy': 'IT',
-                'Spain': 'ES',
-                'Netherlands': 'NL',
-                'Belgium': 'BE',
-                'Switzerland': 'CH',
-                'Austria': 'AT',
-                'Sweden': 'SE',
-                'Norway': 'NO',
-                'Denmark': 'DK',
-                'Finland': 'FI',
-            };
-
-            const countryCode = countryCodeMap[countryName] || 'IN';
-            const zipcodeApiUrl = `https://app.zipcodebase.com/api/v1/search?apikey=${ZIPCODEBASE_API_KEY}&city=${encodeURIComponent(cityName)}&country=${countryCode}`;
-
-            console.log(`🌐 Trying Zipcodebase API for country code: ${countryCode}`);
-            const zipcodeResponse = await fetch(zipcodeApiUrl);
-            const zipcodeData = await zipcodeResponse.json();
-
-            if (zipcodeResponse.ok && zipcodeData.results && Object.keys(zipcodeData.results).length > 0) {
-                const areasFromApi: any[] = [];
-                const areaMap = new Map();
-
-                Object.entries(zipcodeData.results).forEach(([pincode, locations]: [string, any]) => {
-                    locations.forEach((loc: any) => {
-                        const areaName = loc.province_en || loc.city_en || loc.state_en;
-                        if (areaName && !areaMap.has(areaName)) {
-                            areaMap.set(areaName, pincode);
-                            areasFromApi.push({
-                                label: `${areaName} (${pincode})`,
-                                value: areaName,
-                                pincode: pincode,
-                            });
-                        }
-                    });
-                });
-
-                console.log(`✅ Zipcodebase API Success! Found ${areasFromApi.length} areas`);
-                setApiAreas(areasFromApi);
-                toast.success(`Found ${areasFromApi.length} areas in ${cityName}!`);
-                setLoadingApiAreas(false);
-                return;
-            }
-
-            // Both APIs failed
-            console.log('❌ Both APIs returned no results');
-            setApiAreas([]);
-            toast.info(`No areas found for "${cityName}". Please enter manually.`);
-        } catch (error: any) {
-            console.error('❌ Error fetching API areas:', error);
-            setApiAreas([]);
-            toast.warning('API unavailable. Please enter area manually.');
-        } finally {
-            setLoadingApiAreas(false);
-        }
-    };
-
-    // Handle API area selection
-    const handleApiAreaSelection = (option: any) => {
-        setSelectedApiArea(option);
-        if (option) {
-            setAreaName(option.value);
-            setPincode(option.pincode);
-        }
-    };
+    // Removed: API area fetching and selection handlers (no longer needed)
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -356,8 +224,6 @@ const ZoneDetails: React.FC = () => {
         setCapacity(100);
         setDescription('');
         setPincode('');
-        setApiAreas([]);
-        setSelectedApiArea(null);
     };
 
     const resetPartnerForm = () => {
@@ -527,8 +393,18 @@ const ZoneDetails: React.FC = () => {
                         <p className="text-lg font-semibold">{zone.zoneName}</p>
                     </div>
                     <div>
-                        <label className="text-sm font-medium text-gray-600">City</label>
-                        <p className="text-lg font-semibold">{zone.cityId}</p>
+                        <label className="text-sm font-medium text-gray-600">Cities</label>
+                        <div className="flex flex-wrap gap-2 mt-1">
+                            {zone.cities && zone.cities.length > 0 ? (
+                                zone.cities.map((city: string, index: number) => (
+                                    <Badge key={index} variant="default">
+                                        {city}
+                                    </Badge>
+                                ))
+                            ) : (
+                                <p className="text-lg font-semibold">{zone.cityId}</p>
+                            )}
+                        </div>
                     </div>
                     <div>
                         <label className="text-sm font-medium text-gray-600">State</label>
@@ -540,10 +416,19 @@ const ZoneDetails: React.FC = () => {
                     </div>
                     <div>
                         <label className="text-sm font-medium text-gray-600">Zone Partner</label>
-                        <div className="mt-1">
+                        <div className="mt-1 flex items-center gap-2">
                             <Badge variant={zone.assignedMFId ? 'success' : 'warning'}>
                                 {zone.assignedMFId ? 'ASSIGNED' : 'NOT ASSIGNED'}
                             </Badge>
+                            {!zone.assignedMFId && (
+                                <button
+                                    onClick={() => setIsZonePartnerModalOpen(true)}
+                                    className="p-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                    title="Create Zone Partner"
+                                >
+                                    <UserPlus size={14} />
+                                </button>
+                            )}
                         </div>
                     </div>
                     <div>
@@ -597,7 +482,7 @@ const ZoneDetails: React.FC = () => {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <h4 className="font-semibold text-blue-900 mb-2">Zone: {zone.zoneName}</h4>
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-blue-800">
-                            <div>City: {zone.cityId}</div>
+                            <div>Cities: {zone.cities && zone.cities.length > 0 ? zone.cities.join(', ') : zone.cityId}</div>
                             <div>State: {zone.stateId}</div>
                             <div>Country: {zone.countryId}</div>
                             {zone.assignedMFId && (
@@ -610,47 +495,19 @@ const ZoneDetails: React.FC = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Area Name <span className="text-red-500">*</span>
-                                {loadingApiAreas && <span className="text-blue-600 ml-2">(Loading areas...)</span>}
-                            </label>
-                            {apiAreas.length > 0 && !editingId ? (
-                                <>
-                                    <Select
-                                        options={apiAreas}
-                                        value={selectedApiArea}
-                                        onChange={handleApiAreaSelection}
-                                        placeholder="Select an area from API"
-                                        isSearchable
-                                        isClearable
-                                        isDisabled={loadingApiAreas}
-                                        isLoading={loadingApiAreas}
-                                        styles={{
-                                            control: (base) => ({
-                                                ...base,
-                                                minHeight: '42px',
-                                                borderColor: '#e5e7eb',
-                                            }),
-                                        }}
-                                    />
-                                    <p className="mt-1 text-sm text-gray-500">
-                                        Select from API suggestions or clear to enter manually
-                                    </p>
-                                </>
-                            ) : (
-                                <Input
-                                    value={areaName}
-                                    onChange={(e) => setAreaName(e.target.value)}
-                                    required
-                                    placeholder="e.g., Downtown"
-                                    disabled={loadingApiAreas}
-                                    helperText={
-                                        editingId
-                                            ? "Area name cannot be changed while editing"
-                                            : "Enter area name manually"
-                                    }
-                                />
-                            )}
+                            <Input
+                                label="Area Name"
+                                value={areaName}
+                                onChange={(e) => setAreaName(e.target.value)}
+                                required
+                                placeholder="e.g., Downtown, Jawahar Nagar, MG Road"
+                                disabled={!!editingId}
+                                helperText={
+                                    editingId
+                                        ? "Area name cannot be changed while editing"
+                                        : "Enter the area/locality name"
+                                }
+                            />
                         </div>
 
                         <div>
@@ -674,12 +531,8 @@ const ZoneDetails: React.FC = () => {
                                 label="Pincode(s)"
                                 value={pincode}
                                 onChange={(e) => setPincode(e.target.value)}
-                                placeholder="e.g., 390001, 390002"
-                                helperText={
-                                    selectedApiArea
-                                        ? "Auto-filled from selected area (you can modify)"
-                                        : "Comma separated pincodes"
-                                }
+                                placeholder="e.g., 390001"
+                                helperText="Enter pincode for this area"
                             />
                         </div>
 
@@ -870,6 +723,18 @@ const ZoneDetails: React.FC = () => {
                     </div>
                 </form>
             </Modal>
+
+            {/* Zone Partner Modal */}
+            <FranchisePartnerModal
+                isOpen={isZonePartnerModalOpen}
+                onClose={() => setIsZonePartnerModalOpen(false)}
+                prefilledRole="master-franchise"
+                prefilledZoneId={id}
+                onSuccess={() => {
+                    queryClient.invalidateQueries({ queryKey: ['zone', id] });
+                    queryClient.invalidateQueries({ queryKey: ['zones'] });
+                }}
+            />
         </div>
     );
 };
