@@ -5,7 +5,7 @@ import DashboardCore from "./pages/Dashboard-core";
 import DashboardFranchise from "./pages/Dashboard-franchise";
 import DashboardZone from "./pages/Dashboard-zone";
 import DashboardArea from "./pages/Dashboard-area";
-import DashboardCGC from "./pages/Dashboard-cgc";
+
 import DashboardDCP from "./pages/Dashboard-dcp";
 import AdminAnalytics from "./pages/AdminAnalytics";
 import BizWinAnalytics from "./pages/BizWinAnalytics";
@@ -36,7 +36,7 @@ import "react-toastify/dist/ReactToastify.css";
 import CommunityCore from "./pages/community-core";
 import ReferredUsers from "./pages/user-core";
 import UserDetailsPage from "./pages/UserDetailPage";
-import RegionManagement from "./pages/region";
+
 import CreateBlog from "./pages/CreateBlog";
 import ViewBlog from "./pages/ViewBlog";
 import EditBlog from "./pages/EditBlog";
@@ -109,7 +109,7 @@ function App() {
           <Route path="/Inquiry" element={<Inquiry />} />
           <Route path="/core" element={<CommunityMemberList />} />
           {/* <Route path="/EventCreation" element={<EventCreation />} /> */}
-          <Route path="/region" element={<RegionManagement />} />
+
           <Route path="/Meetingpage" element={<MeetingPage />} />
           <Route path="/meetings/:id" element={<MeetingDetailsPage />} />
 
@@ -167,11 +167,6 @@ function App() {
         {/* Area Franchise Routes */}
         <Route element={<RoleBasedRoute allowedRoles={["area-franchise"]} />}>
           <Route path="/dashboard-area" element={<DashboardArea />} />
-        </Route>
-
-        {/* CGC Routes */}
-        <Route element={<RoleBasedRoute allowedRoles={["cgc"]} />}>
-          <Route path="/dashboard-cgc" element={<DashboardCGC />} />
         </Route>
 
         {/* DCP Routes */}

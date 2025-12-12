@@ -5,7 +5,7 @@ export interface CreateFranchiseData {
   lname?: string;
   email: string;
   mobile: string;
-  role: 'master-franchise' | 'area-franchise' | 'cgc' | 'dcp';
+  role: 'master-franchise' | 'area-franchise' | 'dcp';
   password: string;
   zoneId?: string;  // Required for master-franchise
   areaId?: string;  // Required for area-franchise

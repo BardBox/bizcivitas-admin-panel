@@ -1,14 +1,13 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Edit, Trash2, ArrowLeft, UserPlus } from 'lucide-react';
+import { Edit, Trash2, ArrowLeft, UserPlus, Eye, EyeOff } from 'lucide-react';
 import Swal from 'sweetalert2';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import Select from 'react-select';
 
 import { Table, Button, Modal, Input, Badge, Card, Breadcrumb } from '../../components/shared';
 import { getZoneById } from '../../api/zoneApi';
-import { getAreasByZone, createArea, updateArea, deleteArea, assignAreaFranchise, Area } from '../../api/areaApi';
-import { getUsersByRole, FranchiseUser, createFranchiseUser, CreateFranchiseData } from '../../api/franchiseApi';
+import { getAreasByZone, createArea, updateArea, deleteArea, Area } from '../../api/areaApi';
+import { createFranchiseUser, CreateFranchiseData } from '../../api/franchiseApi';
 import { toast } from 'react-toastify';
 import FranchisePartnerModal from '../../components/franchise/FranchisePartnerModal';
 
@@ -29,8 +28,6 @@ const ZoneDetails: React.FC = () => {
     // Step 2: Partner assignment modal
     const [isPartnerModalOpen, setIsPartnerModalOpen] = useState(false);
     const [newlyCreatedAreaId, setNewlyCreatedAreaId] = useState<string | null>(null);
-    const [partnerAssignmentMode, setPartnerAssignmentMode] = useState<'select' | 'create'>('select');
-    const [step2SelectedPartner, setStep2SelectedPartner] = useState<any>(null);
 
     // New partner form fields
     const [newPartnerFname, setNewPartnerFname] = useState('');
@@ -38,6 +35,7 @@ const ZoneDetails: React.FC = () => {
     const [newPartnerEmail, setNewPartnerEmail] = useState('');
     const [newPartnerMobile, setNewPartnerMobile] = useState('');
     const [newPartnerPassword, setNewPartnerPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     // Removed: Zipcodebase API Key (no longer needed)
 
@@ -51,39 +49,6 @@ const ZoneDetails: React.FC = () => {
     const { data: areas = [], isLoading: areasLoading } = useQuery({
         queryKey: ['areas', id],
         queryFn: () => getAreasByZone(id!),
-        enabled: !!id,
-    });
-
-    // Fetch available Area Franchise users for this zone
-    const { data: availableAreaFranchises = [] } = useQuery({
-        queryKey: ['area-franchises-available', id],
-        queryFn: async () => {
-            if (!id) return [];
-            const allAreaFranchises = await getUsersByRole('area-franchise');
-
-            console.log('🔍 All Area Franchises:', allAreaFranchises);
-            console.log('🎯 Looking for zone ID:', id);
-
-            // Filter to get unassigned area franchises for this zone
-            const filtered = allAreaFranchises.filter((af: FranchiseUser) => {
-                const hasNoArea = !af.areaId;
-                const belongsToZone = af.zoneId === id;
-
-                console.log(`👤 ${af.fname} ${af.lname}: `, {
-                    hasNoArea,
-                    belongsToZone,
-                    areaId: af.areaId,
-                    zoneId: af.zoneId,
-                    included: hasNoArea && belongsToZone
-                });
-
-                // Include if: no areaId (unassigned) AND belongs to this zone
-                return hasNoArea && belongsToZone;
-            });
-
-            console.log('✅ Filtered Area Franchises:', filtered);
-            return filtered;
-        },
         enabled: !!id,
     });
 
@@ -139,30 +104,15 @@ const ZoneDetails: React.FC = () => {
     // Step 2: Create new Area Franchise partner (with areaId included)
     const createPartnerMutation = useMutation({
         mutationFn: (data: CreateFranchiseData) => createFranchiseUser(data),
-        onSuccess: async (newPartner: FranchiseUser) => {
+        onSuccess: async (newPartner: any) => {
             console.log('✅ Partner created and assigned:', newPartner);
             // Partner is already assigned via areaId in the creation payload
             queryClient.invalidateQueries({ queryKey: ['areas', id] });
-            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', id] });
-            toast.success(`Area Franchise partner "${newPartner.fname}" created and assigned successfully!`);
+            toast.success(`Area Franchise partner "${newPartner.fname || 'Partner'}" created and assigned successfully!`);
             closePartnerModal();
         },
         onError: (error: any) => {
             toast.error(error.response?.data?.message || 'Failed to create partner');
-        }
-    });
-
-    // Step 2: Assign existing partner
-    const assignPartnerMutation = useMutation({
-        mutationFn: (partnerId: string) => assignAreaFranchise(newlyCreatedAreaId!, partnerId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['areas', id] });
-            queryClient.invalidateQueries({ queryKey: ['area-franchises-available', id] });
-            toast.success('Area Franchise partner assigned successfully!');
-            closePartnerModal();
-        },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.message || 'Failed to assign partner');
         }
     });
 
@@ -187,7 +137,45 @@ const ZoneDetails: React.FC = () => {
         };
 
         if (editingId) {
-            updateMutation.mutate({ id: editingId, payload });
+            // Update area details first
+            updateMutation.mutate({ id: editingId, payload }, {
+                onSuccess: async () => {
+                    // After area update, handle partner update/creation if details provided
+                    if (newPartnerFname && newPartnerEmail && newPartnerMobile) {
+                        // Only require password if creating new partner (no existing email was pre-filled)
+                        const isCreatingNew = !newPartnerEmail; // If email wasn't pre-filled, it's a new partner
+
+                        if (isCreatingNew && !newPartnerPassword) {
+                            toast.error('Password is required for new partner');
+                            return;
+                        }
+
+                        const partnerData: CreateFranchiseData = {
+                            fname: newPartnerFname,
+                            lname: newPartnerLname,
+                            email: newPartnerEmail,
+                            mobile: newPartnerMobile,
+                            password: newPartnerPassword || 'placeholder', // Backend should handle update vs create
+                            role: 'area-franchise',
+                            zoneId: id!,
+                            areaId: editingId,
+                            city: zone?.cityId,
+                            state: zone?.stateId,
+                            country: zone?.countryId,
+                        };
+
+                        try {
+                            await createFranchiseUser(partnerData);
+                            toast.success('Area and partner updated successfully');
+                        } catch (error: any) {
+                            toast.error(error.response?.data?.message || 'Failed to update partner');
+                        }
+                    }
+
+                    // Refresh data
+                    queryClient.invalidateQueries({ queryKey: ['areas', id] });
+                }
+            });
         } else {
             createMutation.mutate(payload);
         }
@@ -199,6 +187,16 @@ const ZoneDetails: React.FC = () => {
         setCapacity(area.capacity || 100);
         setDescription(area.boundaries?.description || '');
         setPincode(area.metadata?.pinCodes?.join(', ') || '');
+
+        // Pre-fill partner details if assigned
+        if (area.areaFranchise) {
+            setNewPartnerFname(area.areaFranchise.fname || '');
+            setNewPartnerLname(area.areaFranchise.lname || '');
+            setNewPartnerEmail(area.areaFranchise.email || '');
+            setNewPartnerMobile(area.areaFranchise.phoneNumber || '');
+            // Note: Password won't be pre-filled for security reasons
+        }
+
         setIsModalOpen(true);
     };
 
@@ -224,6 +222,7 @@ const ZoneDetails: React.FC = () => {
         setCapacity(100);
         setDescription('');
         setPincode('');
+        resetPartnerForm();
     };
 
     const resetPartnerForm = () => {
@@ -232,13 +231,11 @@ const ZoneDetails: React.FC = () => {
         setNewPartnerEmail('');
         setNewPartnerMobile('');
         setNewPartnerPassword('');
-        setStep2SelectedPartner(null);
     };
 
     const closePartnerModal = () => {
         setIsPartnerModalOpen(false);
         setNewlyCreatedAreaId(null);
-        setPartnerAssignmentMode('select');
         resetPartnerForm();
     };
 
@@ -246,36 +243,27 @@ const ZoneDetails: React.FC = () => {
     const handlePartnerAssignment = (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (partnerAssignmentMode === 'select') {
-            // Assign existing partner
-            if (!step2SelectedPartner) {
-                toast.error('Please select a partner to assign');
-                return;
-            }
-            assignPartnerMutation.mutate(step2SelectedPartner.value);
-        } else {
-            // Create new partner
-            if (!newPartnerFname || !newPartnerEmail || !newPartnerMobile || !newPartnerPassword) {
-                toast.error('Please fill all required fields');
-                return;
-            }
-
-            const newPartnerData: CreateFranchiseData = {
-                fname: newPartnerFname,
-                lname: newPartnerLname,
-                email: newPartnerEmail,
-                mobile: newPartnerMobile,
-                password: newPartnerPassword,
-                role: 'area-franchise',
-                zoneId: id!, // Assign to current zone
-                areaId: newlyCreatedAreaId!, // Assign to newly created area
-                city: zone?.cityId,
-                state: zone?.stateId,
-                country: zone?.countryId,
-            };
-
-            createPartnerMutation.mutate(newPartnerData);
+        // Create new partner
+        if (!newPartnerFname || !newPartnerEmail || !newPartnerMobile || !newPartnerPassword) {
+            toast.error('Please fill all required fields');
+            return;
         }
+
+        const newPartnerData: CreateFranchiseData = {
+            fname: newPartnerFname,
+            lname: newPartnerLname,
+            email: newPartnerEmail,
+            mobile: newPartnerMobile,
+            password: newPartnerPassword,
+            role: 'area-franchise',
+            zoneId: id!, // Assign to current zone
+            areaId: newlyCreatedAreaId!, // Assign to newly created area
+            city: zone?.cityId,
+            state: zone?.stateId,
+            country: zone?.countryId,
+        };
+
+        createPartnerMutation.mutate(newPartnerData);
     };
 
     const columns = [
@@ -555,12 +543,96 @@ const ZoneDetails: React.FC = () => {
                         </div>
                     )}
 
+                    {/* Partner Assignment Section - Only for Edit Mode */}
+                    {editingId && (
+                        <div className="border-t pt-6">
+                            <h3 className="text-lg font-semibold mb-4">Area Franchise Partner</h3>
+
+                            {/* Info box */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                                <div className="flex items-start">
+                                    <span className="text-2xl mr-3">ℹ️</span>
+                                    <div>
+                                        <h4 className="font-semibold text-blue-900 mb-1">Update Area Partner</h4>
+                                        <p className="text-sm text-blue-700">
+                                            {newPartnerFname || newPartnerEmail
+                                                ? "Modify the existing partner's details below or create a new partner."
+                                                : "Create a new Area Franchise partner to manage this area."}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Partner Form */}
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <Input
+                                        label="First Name"
+                                        value={newPartnerFname}
+                                        onChange={(e) => setNewPartnerFname(e.target.value)}
+                                        placeholder="John"
+                                    />
+                                    <Input
+                                        label="Last Name"
+                                        value={newPartnerLname}
+                                        onChange={(e) => setNewPartnerLname(e.target.value)}
+                                        placeholder="Doe"
+                                    />
+                                    <Input
+                                        label="Email"
+                                        type="email"
+                                        value={newPartnerEmail}
+                                        onChange={(e) => setNewPartnerEmail(e.target.value)}
+                                        placeholder="john@example.com"
+                                    />
+                                    <Input
+                                        label="Mobile Number"
+                                        value={newPartnerMobile}
+                                        onChange={(e) => setNewPartnerMobile(e.target.value)}
+                                        placeholder="+91 9876543210"
+                                    />
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                            Password
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type={showPassword ? "text" : "password"}
+                                                value={newPartnerPassword}
+                                                onChange={(e) => setNewPartnerPassword(e.target.value)}
+                                                placeholder={newPartnerEmail ? "Leave empty to keep current password" : "Enter password"}
+                                                className="block w-full pl-3 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(!showPassword)}
+                                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700"
+                                            >
+                                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                        <p className="mt-1 text-sm text-gray-500">
+                                            {newPartnerEmail ? "Only fill if you want to change the password" : "Minimum 6 characters"}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
-                        <Button variant="secondary" onClick={() => setIsModalOpen(false)} type="button">
+                        <Button variant="secondary" onClick={() => { setIsModalOpen(false); resetForm(); }} type="button">
                             Cancel
                         </Button>
                         <Button type="submit" disabled={!areaName || createMutation.isPending || updateMutation.isPending}>
-                            {createMutation.isPending || updateMutation.isPending ? 'Saving...' : (editingId ? "Update Area" : "Create Area")}
+                            {createMutation.isPending || updateMutation.isPending
+                                ? 'Saving...'
+                                : (editingId
+                                    ? ((newPartnerFname || newPartnerEmail || newPartnerMobile)
+                                        ? "Update Area & Partner"
+                                        : "Update Area")
+                                    : "Create Area")
+                            }
                         </Button>
                     </div>
                 </form>
@@ -584,79 +656,20 @@ const ZoneDetails: React.FC = () => {
                         </p>
                     </div>
 
-                    {/* Mode Selection: Radio buttons */}
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-gray-900 mb-3">Choose Assignment Method</h4>
-                        <div className="space-y-3">
-                            <label className="flex items-center cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="partnerMode"
-                                    value="select"
-                                    checked={partnerAssignmentMode === 'select'}
-                                    onChange={() => {
-                                        setPartnerAssignmentMode('select');
-                                        resetPartnerForm();
-                                    }}
-                                    className="w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-                                />
-                                <span className="ml-2 text-sm font-medium text-gray-900">
-                                    📋 Select Existing Partner
-                                </span>
-                            </label>
-                            <label className="flex items-center cursor-pointer">
-                                <input
-                                    type="radio"
-                                    name="partnerMode"
-                                    value="create"
-                                    checked={partnerAssignmentMode === 'create'}
-                                    onChange={() => {
-                                        setPartnerAssignmentMode('create');
-                                        setStep2SelectedPartner(null);
-                                    }}
-                                    className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500"
-                                />
-                                <span className="ml-2 text-sm font-medium text-gray-900">
-                                    ➕ Create New Partner
-                                </span>
-                            </label>
+                    {/* Info box - Only creating new partner for new areas */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-start">
+                            <span className="text-2xl mr-3">ℹ️</span>
+                            <div>
+                                <h4 className="font-semibold text-blue-900 mb-1">Creating Area Franchise Partner</h4>
+                                <p className="text-sm text-blue-700">
+                                    Since this is a new area, you'll need to create a new Area Franchise partner to manage it.
+                                </p>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Conditional Content based on mode */}
-                    {partnerAssignmentMode === 'select' ? (
-                        // Select existing partner
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Select Area Franchise Partner <span className="text-red-500">*</span>
-                                </label>
-                                {availableAreaFranchises.length > 0 ? (
-                                    <>
-                                        <Select
-                                            options={availableAreaFranchises.map((af: FranchiseUser) => ({
-                                                label: `${af.fname} ${af.lname || ''} (${af.email})`,
-                                                value: af._id,
-                                                user: af
-                                            }))}
-                                            value={step2SelectedPartner}
-                                            onChange={(val) => setStep2SelectedPartner(val)}
-                                            placeholder="Search for a partner..."
-                                            isSearchable
-                                        />
-                                        <p className="mt-1 text-xs text-gray-500">
-                                            Only showing unassigned partners in this zone.
-                                        </p>
-                                    </>
-                                ) : (
-                                    <div className="text-sm text-red-500 bg-red-50 p-3 rounded border border-red-100">
-                                        No unassigned Area Franchise partners found in this zone. Please create a new one.
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        // Create new partner
+                    {/* Create new partner form */}
                         <div className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Input
@@ -700,7 +713,6 @@ const ZoneDetails: React.FC = () => {
                                 </div>
                             </div>
                         </div>
-                    )}
 
                     <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
                         <Button variant="secondary" onClick={closePartnerModal} type="button">
@@ -709,15 +721,13 @@ const ZoneDetails: React.FC = () => {
                         <Button
                             type="submit"
                             disabled={
-                                (partnerAssignmentMode === 'select' && !step2SelectedPartner) ||
-                                (partnerAssignmentMode === 'create' && (!newPartnerFname || !newPartnerEmail || !newPartnerMobile || !newPartnerPassword)) ||
-                                createPartnerMutation.isPending ||
-                                assignPartnerMutation.isPending
+                                !newPartnerFname || !newPartnerEmail || !newPartnerMobile || !newPartnerPassword ||
+                                createPartnerMutation.isPending
                             }
                         >
-                            {createPartnerMutation.isPending || assignPartnerMutation.isPending
-                                ? 'Assigning...'
-                                : partnerAssignmentMode === 'create' ? 'Create & Assign Partner' : 'Assign Partner'
+                            {createPartnerMutation.isPending
+                                ? 'Creating Partner...'
+                                : 'Create & Assign Partner'
                             }
                         </Button>
                     </div>

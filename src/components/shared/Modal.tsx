@@ -7,6 +7,7 @@ interface ModalProps {
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   showCloseButton?: boolean;
+  closeOnOutsideClick?: boolean;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -15,7 +16,8 @@ const Modal: React.FC<ModalProps> = ({
   title,
   children,
   size = 'md',
-  showCloseButton = true
+  showCloseButton = true,
+  closeOnOutsideClick = true
 }) => {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -43,7 +45,7 @@ const Modal: React.FC<ModalProps> = ({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black bg-opacity-50 transition-opacity"
-        onClick={onClose}
+        onClick={closeOnOutsideClick ? onClose : undefined}
       ></div>
 
       {/* Modal */}

@@ -183,7 +183,7 @@ const SidebarContent = ({
       link: "/community",
       roles: ["admin"],
     },
-    { text: "Region", icon: <MapIcon />, link: "/region", roles: ["admin"] },
+
     {
       text: "Meetings",
       icon: <MeetingRoomIcon />,

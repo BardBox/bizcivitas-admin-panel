@@ -13,10 +13,12 @@ const FranchiseManagement: React.FC = () => {
     const queryClient = useQueryClient();
     const user = getUserFromLocalStorage();
     const isMasterFranchise = user?.role === 'master-franchise';
+    // const isAreaFranchise = user?.role === 'area-franchise';
+    const isAdmin = user?.role === 'admin';
 
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<FranchiseUser | null>(null);
-    const [viewRole, setViewRole] = useState<'master-franchise' | 'area-franchise'>(
+    const [viewRole, setViewRole] = useState<'master-franchise' | 'area-franchise' | 'dcp'>(
         isMasterFranchise ? 'area-franchise' : 'master-franchise'
     );
 
@@ -45,6 +47,27 @@ const FranchiseManagement: React.FC = () => {
         setIsModalOpen(true);
     };
 
+    const handleEdit = (user: FranchiseUser) => {
+        setEditingUser(user);
+        setIsModalOpen(true);
+    };
+
+    const handleDelete = async (userId: string) => {
+        const result = await Swal.fire({
+            title: 'Are you sure?',
+            text: "You won't be able to revert this!",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, delete it!'
+        });
+
+        if (result.isConfirmed) {
+            deleteMutation.mutate(userId);
+        }
+    };
+
     const columns = [
         {
             key: 'name',
@@ -71,7 +94,9 @@ const FranchiseManagement: React.FC = () => {
             label: 'Role',
             render: (user: FranchiseUser) => (
                 <Badge variant="info">
-                    {user.role === 'master-franchise' ? 'Master Franchise' : 'Area Franchise'}
+                    {user.role === 'master-franchise' ? 'Master Franchise' :
+                        user.role === 'area-franchise' ? 'Area Franchise' :
+                            'DCP'}
                 </Badge>
             )
         },
@@ -90,8 +115,8 @@ const FranchiseManagement: React.FC = () => {
                         </div>
                     );
                 }
-                // For Area Franchise, show Area name
-                if (user.role === 'area-franchise' && user.areaId) {
+                // For Area Franchise and DCP, show Area name
+                if ((user.role === 'area-franchise' || user.role === 'dcp') && user.areaId) {
                     const areaName = typeof user.areaId === 'object' ? user.areaId.areaName : null;
                     const zoneName = typeof user.areaId === 'object' && typeof user.areaId.zoneId === 'object' ? user.areaId.zoneId.zoneName : user.city;
                     return (
@@ -122,47 +147,37 @@ const FranchiseManagement: React.FC = () => {
         {
             key: 'actions',
             label: 'Actions',
-            render: (user: FranchiseUser) => (
-                <div className="flex items-center space-x-2">
-                    <button
-                        onClick={() => handleEdit(user)}
-                        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                        title="Edit"
-                    >
-                        <Edit size={16} />
-                    </button>
-                    <button
-                        onClick={() => handleDelete(user._id)}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded"
-                        title="Delete"
-                    >
-                        <Trash2 size={16} />
-                    </button>
-                </div>
-            )
+            render: (user: FranchiseUser) => {
+                // Area Franchise can only create DCP, not edit/delete
+                const showEditDelete = viewRole === 'dcp' ? isAdmin : true;
+
+                return (
+                    <div className="flex items-center space-x-2">
+                        {showEditDelete && (
+                            <>
+                                <button
+                                    onClick={() => handleEdit(user)}
+                                    className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                    title="Edit"
+                                >
+                                    <Edit size={16} />
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(user._id)}
+                                    className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                    title="Delete"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </>
+                        )}
+                    </div>
+                );
+            }
         }
     ];
 
-    const handleEdit = (user: FranchiseUser) => {
-        setEditingUser(user);
-        setIsModalOpen(true);
-    };
-
-    const handleDelete = async (userId: string) => {
-        const result = await Swal.fire({
-            title: 'Are you sure?',
-            text: "You won't be able to revert this!",
-            icon: 'warning',
-            showCancelButton: true,
-            confirmButtonColor: '#3085d6',
-            cancelButtonColor: '#d33',
-            confirmButtonText: 'Yes, delete it!'
-        });
-
-        if (result.isConfirmed) {
-            deleteMutation.mutate(userId);
-        }
-    };
+    // ... (handlers)
 
     return (
         <div className="p-6">
@@ -198,17 +213,32 @@ const FranchiseManagement: React.FC = () => {
                         >
                             Area Franchise
                         </button>
+                        <button
+                            onClick={() => setViewRole('dcp')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${viewRole === 'dcp'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                        >
+                            DCP
+                        </button>
                     </div>
                 </div>
             )}
 
             <Card
-                title={`${viewRole === 'master-franchise' ? 'Master Franchise' : 'Area Franchise'} Partners`}
-                subtitle={`Manage ${viewRole === 'master-franchise' ? 'zone-level' : 'area-level'} franchise partners`}
+                title={`${viewRole === 'master-franchise' ? 'Master Franchise' :
+                    viewRole === 'area-franchise' ? 'Area Franchise' :
+                        'DCP'} Partners`}
+                subtitle={`Manage ${viewRole === 'master-franchise' ? 'zone-level' :
+                    viewRole === 'area-franchise' ? 'area-level' :
+                        'Digital Community Partner'} franchise partners`}
                 headerAction={
                     <Button onClick={handleCreateNew}>
                         <UserPlus size={16} className="mr-2" />
-                        Add New {viewRole === 'master-franchise' ? 'Master Franchise' : 'Area Franchise'}
+                        Add New {viewRole === 'master-franchise' ? 'Master Franchise' :
+                            viewRole === 'area-franchise' ? 'Area Franchise' :
+                                'DCP'}
                     </Button>
                 }
             >
@@ -216,7 +246,9 @@ const FranchiseManagement: React.FC = () => {
                     columns={columns}
                     data={franchiseUsers}
                     loading={usersLoading}
-                    emptyMessage={`No ${viewRole === 'master-franchise' ? 'Master Franchise' : 'Area Franchise'} partners found.`}
+                    emptyMessage={`No ${viewRole === 'master-franchise' ? 'Master Franchise' :
+                        viewRole === 'area-franchise' ? 'Area Franchise' :
+                            'DCP'} partners found.`}
                 />
             </Card>
 
@@ -228,7 +260,7 @@ const FranchiseManagement: React.FC = () => {
                     setIsModalOpen(false);
                 }}
                 editingUser={editingUser}
-                prefilledRole={isMasterFranchise ? 'area-franchise' : undefined}
+                prefilledRole={isMasterFranchise ? 'area-franchise' : viewRole === 'dcp' ? 'dcp' : undefined}
                 onSuccess={() => {
                     queryClient.invalidateQueries({ queryKey: ['franchise-users'] });
                 }}

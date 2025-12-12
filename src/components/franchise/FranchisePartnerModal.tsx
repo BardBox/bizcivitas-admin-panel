@@ -11,7 +11,7 @@ interface FranchisePartnerModalProps {
     isOpen: boolean;
     onClose: () => void;
     editingUser?: FranchiseUser | null;
-    prefilledRole?: 'master-franchise' | 'area-franchise';
+    prefilledRole?: 'master-franchise' | 'area-franchise' | 'dcp';
     prefilledZoneId?: string;
     onSuccess?: () => void;
 }
@@ -32,7 +32,7 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
     const [email, setEmail] = useState('');
     const [mobile, setMobile] = useState('');
     const [password, setPassword] = useState('');
-    const [role, setRole] = useState<'master-franchise' | 'area-franchise'>(prefilledRole || 'master-franchise');
+    const [role, setRole] = useState<'master-franchise' | 'area-franchise' | 'dcp'>(prefilledRole || 'master-franchise');
     const [selectedZone, setSelectedZone] = useState<any>(null);
     const [selectedArea, setSelectedArea] = useState<any>(null);
 
@@ -48,7 +48,7 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
             if (!selectedZone?.value) return [];
             return getAllAreas();
         },
-        enabled: !!selectedZone?.value && role === 'area-franchise',
+        enabled: !!selectedZone?.value && (role === 'area-franchise' || role === 'dcp'),
     });
 
     // Get all assigned area IDs from existing area franchise users
@@ -118,6 +118,13 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
         }
     }, [prefilledZoneId, zones, selectedZone]);
 
+    // Update role when prefilledRole changes
+    useEffect(() => {
+        if (!editingUser) {
+            setRole(prefilledRole || 'master-franchise');
+        }
+    }, [prefilledRole, editingUser]);
+
     // Pre-fill form when editing
     useEffect(() => {
         if (editingUser) {
@@ -126,7 +133,7 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
             setEmail(editingUser.email);
             setMobile(editingUser.mobile);
             setPassword('');
-            setRole(editingUser.role as 'master-franchise' | 'area-franchise');
+            setRole(editingUser.role as 'master-franchise' | 'area-franchise' | 'dcp');
 
             if (editingUser.role === 'master-franchise' && editingUser.zoneId) {
                 if (typeof editingUser.zoneId === 'object' && editingUser.zoneId._id) {
@@ -145,12 +152,28 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
                         });
                     }
                 }
-            } else if (editingUser.role === 'area-franchise' && editingUser.areaId) {
-                if (typeof editingUser.areaId === 'object' && editingUser.areaId._id) {
+            } else if ((editingUser.role === 'area-franchise' || editingUser.role === 'dcp') && editingUser.areaId) {
+                const userArea = editingUser.areaId;
+                if (typeof userArea === 'object' && userArea._id) {
+                    // Set the zone first for DCP
+                    if (editingUser.role === 'dcp' && userArea.zoneId) {
+                        const zoneData = typeof userArea.zoneId === 'object'
+                            ? userArea.zoneId
+                            : zones.find((z: Zone) => z._id === userArea.zoneId);
+
+                        if (zoneData) {
+                            setSelectedZone({
+                                label: `${zoneData.zoneName} (${zoneData.cities?.join(', ') || zoneData.cityId})`,
+                                value: zoneData._id,
+                                zone: zoneData
+                            });
+                        }
+                    }
+
                     setSelectedArea({
-                        label: `${editingUser.areaId.areaName} (${typeof editingUser.areaId.zoneId === 'object' ? editingUser.areaId.zoneId.zoneName : 'Unknown Zone'})`,
-                        value: editingUser.areaId._id,
-                        area: editingUser.areaId
+                        label: `${userArea.areaName} (${typeof userArea.zoneId === 'object' ? userArea.zoneId.zoneName : 'Unknown Zone'})`,
+                        value: userArea._id,
+                        area: userArea
                     });
                 }
             }
@@ -188,8 +211,13 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
             return;
         }
 
-        if (role === 'area-franchise' && !selectedArea) {
-            toast.error('Please select an area for Area Franchise');
+        if ((role === 'area-franchise' || role === 'dcp') && !selectedArea) {
+            toast.error(`Please select an area for ${role === 'dcp' ? 'DCP' : 'Area Franchise'}`);
+            return;
+        }
+
+        if (role === 'dcp' && !selectedZone) {
+            toast.error('Please select a zone for DCP');
             return;
         }
 
@@ -212,7 +240,7 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
             payload.city = selectedZone.zone.cities?.[0] || selectedZone.zone.cityId;
         }
 
-        if (role === 'area-franchise' && selectedArea) {
+        if ((role === 'area-franchise' || role === 'dcp') && selectedArea) {
             payload.areaId = selectedArea.value;
             payload.zoneId = typeof selectedArea.area.zoneId === 'object' ? selectedArea.area.zoneId._id : selectedArea.area.zoneId;
             payload.country = selectedArea.area.zoneId.countryId;
@@ -255,36 +283,46 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
                 resetForm();
                 onClose();
             }}
-            title={editingUser ? `Edit ${role === 'master-franchise' ? 'Master Franchise' : 'Area Franchise'}` : `Create New ${role === 'master-franchise' ? 'Master Franchise' : 'Area Franchise'}`}
+            title={editingUser ? `Edit ${role === 'master-franchise' ? 'Master Franchise' : role === 'area-franchise' ? 'Area Franchise' : 'DCP'}` : `Create New ${role === 'master-franchise' ? 'Master Franchise' : role === 'area-franchise' ? 'Area Franchise' : 'DCP'}`}
             size="lg"
+            closeOnOutsideClick={false}
         >
             <form onSubmit={handleSubmit} className="space-y-4">
-                {/* Partner Type */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h4 className="font-semibold text-blue-900 mb-3">Partner Type *</h4>
-                    <div className="flex items-center gap-6">
-                        <label className="flex items-center cursor-pointer">
-                            <input
-                                type="radio"
-                                checked={role === 'master-franchise'}
-                                onChange={() => setRole('master-franchise')}
-                                className="mr-2 w-4 h-4"
-                                disabled={!!prefilledRole}
-                            />
-                            <span className="text-sm font-medium">Master Franchise (Zone Level)</span>
-                        </label>
-                        <label className="flex items-center cursor-pointer">
-                            <input
-                                type="radio"
-                                checked={role === 'area-franchise'}
-                                onChange={() => setRole('area-franchise')}
-                                className="mr-2 w-4 h-4"
-                                disabled={!!prefilledRole}
-                            />
-                            <span className="text-sm font-medium">Area Franchise (Area Level)</span>
-                        </label>
+                {/* Partner Type - Only show if not prefilled */}
+                {!prefilledRole && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-blue-900 mb-3">Partner Type *</h4>
+                        <div className="flex items-center gap-6">
+                            <label className="flex items-center cursor-pointer">
+                                <input
+                                    type="radio"
+                                    checked={role === 'master-franchise'}
+                                    onChange={() => setRole('master-franchise')}
+                                    className="mr-2 w-4 h-4"
+                                />
+                                <span className="text-sm font-medium">Master Franchise (Zone Level)</span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                                <input
+                                    type="radio"
+                                    checked={role === 'area-franchise'}
+                                    onChange={() => setRole('area-franchise')}
+                                    className="mr-2 w-4 h-4"
+                                />
+                                <span className="text-sm font-medium">Area Franchise (Area Level)</span>
+                            </label>
+                            <label className="flex items-center cursor-pointer">
+                                <input
+                                    type="radio"
+                                    checked={role === 'dcp'}
+                                    onChange={() => setRole('dcp')}
+                                    className="mr-2 w-4 h-4"
+                                />
+                                <span className="text-sm font-medium">DCP (Direct Channel Partner)</span>
+                            </label>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Personal Information */}
                 <div>
@@ -337,7 +375,9 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
                 {/* Zone/Area Assignment */}
                 <div>
                     <h4 className="font-semibold text-gray-900 mb-3">
-                        {role === 'master-franchise' ? 'Zone Assignment' : 'Area Assignment'}
+                        {role === 'master-franchise' ? 'Zone Assignment' :
+                            role === 'dcp' ? 'Zone & Area Assignment' :
+                                'Area Assignment'}
                     </h4>
 
                     {role === 'master-franchise' && (
@@ -365,11 +405,11 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
                         </div>
                     )}
 
-                    {role === 'area-franchise' && (
+                    {(role === 'area-franchise' || role === 'dcp') && (
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Select Zone {prefilledZoneId ? '' : '(Optional Filter)'}
+                                    Select Zone {prefilledZoneId ? '' : role === 'dcp' ? <span className="text-red-500">*</span> : '(Optional Filter)'}
                                 </label>
                                 <Select
                                     options={zoneOptions}
@@ -378,9 +418,9 @@ const FranchisePartnerModal: React.FC<FranchisePartnerModalProps> = ({
                                         setSelectedZone(val);
                                         setSelectedArea(null);
                                     }}
-                                    placeholder="Filter areas by zone"
+                                    placeholder={role === 'dcp' ? "Select a zone" : "Filter areas by zone"}
                                     isSearchable
-                                    isClearable={!prefilledZoneId}
+                                    isClearable={!prefilledZoneId && role !== 'dcp'}
                                     isDisabled={!!prefilledZoneId}
                                 />
                             </div>

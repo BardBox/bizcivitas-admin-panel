@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Box,
   Grid,
@@ -13,6 +13,12 @@ import {
   Paper,
   Chip,
   Divider,
+  CircularProgress,
+  Alert,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from "@mui/material";
 import {
   Groups,
@@ -20,105 +26,72 @@ import {
   EmojiEvents,
   Visibility,
   Event,
-  PersonAdd,
-  Star,
+  TrendingUp,
 } from "@mui/icons-material";
 import { getUserFromLocalStorage } from "../../api/auth";
+import axiosInstance from "../../axiosInstance";
 
-// Mock data - will be replaced with real API calls
-const mockPerformanceData = {
+interface Member {
+  _id: string;
+  fname: string;
+  lname?: string;
+  email: string;
+  businessCategory: string;
+  avatar?: string;
+  membershipType: string;
+  performanceScore?: number; // Added to backend response or calculated
+}
+
+interface DashboardData {
   dcp: {
-    name: "DCP 1 - Tech & IT",
-    area: "Andheri Area",
-    zone: "Mumbai Zone",
-    totalMembers: 48,
-    performanceScore: 92,
-  },
+    id: string;
+    name: string;
+    area: string;
+    zone: string;
+    totalMembers: number;
+    performanceScore: number;
+  };
   overall: {
-    meetups: 12,
-    bizConnect: 28,
-    bizWin: 185000,
-    visitor: 9,
-    events: 6,
-  },
-  members: [
-    {
-      id: 1,
-      name: "Rahul Mehta",
-      businessCategory: "Software Development",
-      performanceScore: 95,
-      memberSince: "Jan 2024",
-      avatar: "R",
-    },
-    {
-      id: 2,
-      name: "Sneha Patel",
-      businessCategory: "Digital Marketing",
-      performanceScore: 92,
-      memberSince: "Feb 2024",
-      avatar: "S",
-    },
-    {
-      id: 3,
-      name: "Arjun Singh",
-      businessCategory: "Web Design",
-      performanceScore: 88,
-      memberSince: "Mar 2024",
-      avatar: "A",
-    },
-    {
-      id: 4,
-      name: "Priya Sharma",
-      businessCategory: "Content Writing",
-      performanceScore: 90,
-      memberSince: "Feb 2024",
-      avatar: "P",
-    },
-    {
-      id: 5,
-      name: "Vikram Desai",
-      businessCategory: "IT Consulting",
-      performanceScore: 86,
-      memberSince: "Apr 2024",
-      avatar: "V",
-    },
-  ],
-  recentActivity: [
-    {
-      type: "bizConnect",
-      description: "Rahul gave referral to Sneha",
-      date: "2 hours ago",
-    },
-    {
-      type: "bizWin",
-      description: "Priya received ₹25,000 TYFCB",
-      date: "5 hours ago",
-    },
-    {
-      type: "meetup",
-      description: "Group meetup scheduled for Dec 10",
-      date: "1 day ago",
-    },
-    {
-      type: "member",
-      description: "New member joined: Vikram Desai",
-      date: "2 days ago",
-    },
-    {
-      type: "event",
-      description: "Webinar on Digital Marketing",
-      date: "3 days ago",
-    },
-  ],
-  monthlyProgress: {
-    meetups: { current: 12, target: 15, percentage: 80 },
-    bizConnect: { current: 28, target: 30, percentage: 93 },
-    bizWin: { current: 185000, target: 200000, percentage: 92.5 },
-  },
-};
+    meetups: number;
+    bizConnect: number;
+    bizWin: number;
+    visitor: number;
+    events: number;
+  };
+  allMembers: Member[];
+  coreGroups: any[];
+}
 
 const DashboardDCP: React.FC = () => {
   const user = getUserFromLocalStorage();
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [period, setPeriod] = useState("monthly");
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        const response = await axiosInstance.get("/franchise/dcp/dashboard", {
+          params: { period }
+        });
+
+        if (response.data.success) {
+          setDashboardData(response.data.data);
+        } else {
+          setError("Failed to fetch dashboard data");
+        }
+      } catch (err: any) {
+        console.error("Error fetching DCP dashboard:", err);
+        setError(err.response?.data?.message || "Failed to load dashboard");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [period]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -128,38 +101,63 @@ const DashboardDCP: React.FC = () => {
     }).format(amount);
   };
 
-  const getActivityIcon = (type: string) => {
-    switch (type) {
-      case "bizConnect":
-        return <Handshake color="primary" />;
-      case "bizWin":
-        return <EmojiEvents color="success" />;
-      case "meetup":
-        return <Groups color="secondary" />;
-      case "member":
-        return <PersonAdd color="info" />;
-      case "event":
-        return <Event color="warning" />;
-      default:
-        return <Star />;
-    }
-  };
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "400px" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error">{error}</Alert>
+      </Box>
+    );
+  }
+
+  if (!dashboardData) return null;
+
+  // DCP only manages digital members
+  const digitalMembers = dashboardData.allMembers || [];
+
+  const {
+    meetups = 0,
+    bizConnect = 0,
+    bizWin = 0,
+    visitor = 0,
+    events = 0
+  } = dashboardData.overall || {};
 
   return (
     <Box sx={{ p: 3 }}>
       {/* Welcome Section */}
-      <Typography variant="h4" gutterBottom>
-        Welcome, {user?.fname} {user?.lname}
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        DCP Dashboard - {mockPerformanceData.dcp.name}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
-        Area: {mockPerformanceData.dcp.area} | Zone:{" "}
-        {mockPerformanceData.dcp.zone} | Members:{" "}
-        {mockPerformanceData.dcp.totalMembers} | Performance Score:{" "}
-        {mockPerformanceData.dcp.performanceScore}%
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Welcome, {user?.fname} {user?.lname}
+          </Typography>
+          <Typography variant="subtitle1" color="text.secondary" gutterBottom>
+            DCP Dashboard - {dashboardData.dcp.name}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            Area: {dashboardData.dcp.area} | Zone: {dashboardData.dcp.zone} |
+            Members: {dashboardData.dcp.totalMembers} | Performance Score: {dashboardData.dcp.performanceScore}%
+          </Typography>
+        </Box>
+        <Box>
+          <FormControl size="small" sx={{ minWidth: 150 }}>
+            <InputLabel>Period</InputLabel>
+            <Select value={period} label="Period" onChange={(e) => setPeriod(e.target.value)}>
+              <MenuItem value="daily">Daily</MenuItem>
+              <MenuItem value="weekly">Weekly</MenuItem>
+              <MenuItem value="monthly">Monthly</MenuItem>
+              <MenuItem value="all-time">All Time</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+      </Box>
 
       {/* Key Metrics Overview */}
       <Grid container spacing={3} mt={2}>
@@ -181,21 +179,20 @@ const DashboardDCP: React.FC = () => {
               >
                 <Groups fontSize="large" />
                 <Chip
-                  label="Total"
+                  label={<TrendingUp fontSize="small" />}
                   size="small"
-                  sx={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+                  color="success"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}
                 />
               </Box>
               <Typography variant="h3" fontWeight="bold">
-                {mockPerformanceData.overall.meetups}
+                {meetups}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 M.U. (Meetups)
               </Typography>
               <Box mt={2}>
-                <Typography variant="caption">
-                  Target: {mockPerformanceData.monthlyProgress.meetups.target}
-                </Typography>
+                <Typography variant="caption">Offline Events</Typography>
               </Box>
             </CardContent>
           </Card>
@@ -219,22 +216,20 @@ const DashboardDCP: React.FC = () => {
               >
                 <Handshake fontSize="large" />
                 <Chip
-                  label="Total"
+                  label={<TrendingUp fontSize="small" />}
                   size="small"
-                  sx={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+                  color="success"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}
                 />
               </Box>
               <Typography variant="h3" fontWeight="bold">
-                {mockPerformanceData.overall.bizConnect}
+                {bizConnect}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 B.C. (BizConnect)
               </Typography>
               <Box mt={2}>
-                <Typography variant="caption">
-                  Target:{" "}
-                  {mockPerformanceData.monthlyProgress.bizConnect.target}
-                </Typography>
+                <Typography variant="caption">Referrals Exchange</Typography>
               </Box>
             </CardContent>
           </Card>
@@ -258,24 +253,20 @@ const DashboardDCP: React.FC = () => {
               >
                 <EmojiEvents fontSize="large" />
                 <Chip
-                  label="Total"
+                  label={<TrendingUp fontSize="small" />}
                   size="small"
-                  sx={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+                  color="success"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}
                 />
               </Box>
               <Typography variant="h4" fontWeight="bold">
-                {formatCurrency(mockPerformanceData.overall.bizWin)}
+                {formatCurrency(bizWin)}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 B.W. (BizWin)
               </Typography>
               <Box mt={2}>
-                <Typography variant="caption">
-                  Target:{" "}
-                  {formatCurrency(
-                    mockPerformanceData.monthlyProgress.bizWin.target
-                  )}
-                </Typography>
+                <Typography variant="caption">Business Generated</Typography>
               </Box>
             </CardContent>
           </Card>
@@ -299,19 +290,20 @@ const DashboardDCP: React.FC = () => {
               >
                 <Visibility fontSize="large" />
                 <Chip
-                  label="Total"
+                  label={<TrendingUp fontSize="small" />}
                   size="small"
-                  sx={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+                  color="success"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}
                 />
               </Box>
               <Typography variant="h3" fontWeight="bold">
-                {mockPerformanceData.overall.visitor}
+                {visitor}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 VISITOR (Invitations)
               </Typography>
               <Box mt={2}>
-                <Typography variant="caption">This Month</Typography>
+                <Typography variant="caption">New Prospects</Typography>
               </Box>
             </CardContent>
           </Card>
@@ -335,110 +327,112 @@ const DashboardDCP: React.FC = () => {
               >
                 <Event fontSize="large" />
                 <Chip
-                  label="Total"
+                  label={<TrendingUp fontSize="small" />}
                   size="small"
-                  sx={{ backgroundColor: "rgba(255,255,255,0.3)" }}
+                  color="success"
+                  sx={{ bgcolor: 'rgba(255,255,255,0.2)' }}
                 />
               </Box>
               <Typography variant="h3" fontWeight="bold">
-                {mockPerformanceData.overall.events}
+                {events}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
                 EVE (Events)
               </Typography>
               <Box mt={2}>
-                <Typography variant="caption">This Month</Typography>
+                <Typography variant="caption">Group Events</Typography>
               </Box>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      {/* Members & Activity Section */}
+      {/* Digital Members Section */}
       <Grid container spacing={3} mt={2}>
-        {/* My Digital Members */}
-        <Grid item xs={12} md={8}>
+        {/* Digital Members */}
+        <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              My Digital Members
-            </Typography>
+            <Box
+              display="flex"
+              justifyContent="space-between"
+              alignItems="center"
+              mb={2}
+            >
+              <Typography variant="h6">Digital Members (DM)</Typography>
+              <Chip
+                label={digitalMembers.length}
+                color="secondary"
+              />
+            </Box>
             <Divider sx={{ mb: 2 }} />
             <List>
-              {mockPerformanceData.members.map((member) => (
-                <ListItem
-                  key={member.id}
-                  sx={{
-                    border: "1px solid #e0e0e0",
-                    borderRadius: 2,
-                    mb: 1,
-                    "&:hover": { backgroundColor: "#f5f5f5" },
-                  }}
-                >
-                  <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: "#667eea" }}>{member.avatar}</Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Typography variant="subtitle1" fontWeight="bold">
-                          {member.name}
-                        </Typography>
-                        <Chip
-                          label={`${member.performanceScore}%`}
-                          size="small"
-                          color="success"
+              {digitalMembers.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                  No digital members found.
+                </Typography>
+              ) : (
+                <Grid container spacing={2}>
+                  {digitalMembers.map((member) => (
+                    <Grid item xs={12} sm={6} md={4} key={member._id}>
+                      <ListItem
+                        sx={{
+                          border: "1px solid #e0e0e0",
+                          borderRadius: 2,
+                          "&:hover": { backgroundColor: "#f5f5f5" },
+                        }}
+                      >
+                        <ListItemAvatar>
+                          <Avatar sx={{ bgcolor: "#4facfe" }} src={member.avatar}>
+                            {member.fname?.[0] || "D"}
+                          </Avatar>
+                        </ListItemAvatar>
+                        <ListItemText
+                          primary={
+                            <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                              <Typography variant="subtitle2" fontWeight="bold">
+                                {member.fname} {member.lname}
+                              </Typography>
+                              {member.performanceScore !== undefined && (
+                                <Chip
+                                  label={`${Math.round(member.performanceScore)}%`}
+                                  size="small"
+                                  color="info"
+                                />
+                              )}
+                            </Box>
+                          }
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary">
+                                {member.businessCategory}
+                              </Typography>
+                              <Chip
+                                label={member.membershipType}
+                                size="small"
+                                color="primary"
+                                variant="outlined"
+                                sx={{ mt: 0.5 }}
+                              />
+                            </Box>
+                          }
                         />
-                      </Box>
-                    }
-                    secondary={
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
-                          {member.businessCategory}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          Member since: {member.memberSince}
-                        </Typography>
-                      </Box>
-                    }
-                  />
-                </ListItem>
-              ))}
+                      </ListItem>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
             </List>
           </Paper>
         </Grid>
 
-        {/* Recent Activity */}
-        <Grid item xs={12} md={4}>
+        {/* Placeholder for Upcoming Events - can be added later via API */}
+        {/*
+        <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Recent Activity
-            </Typography>
-            <Divider sx={{ mb: 2 }} />
-            <List>
-              {mockPerformanceData.recentActivity.map((activity, index) => (
-                <ListItem key={index} alignItems="flex-start" sx={{ px: 0 }}>
-                  <ListItemAvatar>
-                    <Avatar sx={{ bgcolor: "#f5f5f5" }}>
-                      {getActivityIcon(activity.type)}
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText
-                    primary={
-                      <Typography variant="body2">
-                        {activity.description}
-                      </Typography>
-                    }
-                    secondary={
-                      <Typography variant="caption" color="text.secondary">
-                        {activity.date}
-                      </Typography>
-                    }
-                  />
-                </ListItem>
-              ))}
-            </List>
+              ...
           </Paper>
         </Grid>
+        */}
       </Grid>
     </Box>
   );

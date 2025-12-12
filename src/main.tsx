@@ -18,7 +18,7 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 const theme = createTheme({
   palette: {
     primary: {
-      main: "#1976d2", 
+      main: "#1976d2",
     },
     secondary: {
       main: "#f50057", // pink
@@ -32,7 +32,6 @@ const theme = createTheme({
   },
 });
 
-// Layout component
 const Layout: React.FC = () => {
   const { isSidebarAndHeaderVisible } = useVisibility();
   const location = useLocation();

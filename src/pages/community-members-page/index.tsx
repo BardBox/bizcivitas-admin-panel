@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../api/api";
 import { toast, ToastContainer } from "react-toastify";
@@ -23,6 +23,7 @@ import {
 } from "@mui/material";
 import { Search, ArrowBack } from "@mui/icons-material";
 import { debounce } from "lodash";
+import { AuthContext } from "../../context/AuthContext";
 
 interface Member {
   userId: string;
@@ -47,6 +48,7 @@ interface Community {
 const CommunityMembersPage: React.FC = () => {
   const { communityId } = useParams<{ communityId: string }>();
   const navigate = useNavigate();
+  const authContext = useContext(AuthContext);
   const [tabValue, setTabValue] = useState(0);
   const [members, setMembers] = useState<Member[]>([]);
   const [allUsers, setAllUsers] = useState<Member[]>([]);
@@ -56,6 +58,9 @@ const CommunityMembersPage: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchUsersKeyword, setSearchUsersKeyword] = useState("");
+
+  // Check if user is a core member
+  const isCoreMember = authContext?.isCoreMember() || false;
 
   const fetchMembers = async () => {
     if (!communityId) return;
@@ -270,7 +275,7 @@ const CommunityMembersPage: React.FC = () => {
                     <TableCell>Company Name</TableCell>
                     <TableCell>Industry</TableCell>
                     <TableCell>City</TableCell>
-                    <TableCell>Actions</TableCell>
+                    {!isCoreMember && <TableCell>Actions</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -290,21 +295,23 @@ const CommunityMembersPage: React.FC = () => {
                       <TableCell>{member.companyName}</TableCell>
                       <TableCell>{member.industry}</TableCell>
                       <TableCell>{member.city}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="contained"
-                          color="error"
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeUser(member.userId);
-                          }}
-                          disabled={actionLoading === member.userId}
-                          startIcon={actionLoading === member.userId ? <CircularProgress size={16} /> : null}
-                        >
-                          Remove
-                        </Button>
-                      </TableCell>
+                      {!isCoreMember && (
+                        <TableCell>
+                          <Button
+                            variant="contained"
+                            color="error"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeUser(member.userId);
+                            }}
+                            disabled={actionLoading === member.userId}
+                            startIcon={actionLoading === member.userId ? <CircularProgress size={16} /> : null}
+                          >
+                            Remove
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -355,7 +362,7 @@ const CommunityMembersPage: React.FC = () => {
                     <TableCell>Company Name</TableCell>
                     <TableCell>Industry</TableCell>
                     <TableCell>City</TableCell>
-                    <TableCell>Action</TableCell>
+                    {!isCoreMember && <TableCell>Action</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -374,21 +381,23 @@ const CommunityMembersPage: React.FC = () => {
                       <TableCell>{user.companyName}</TableCell>
                       <TableCell>{user.industry}</TableCell>
                       <TableCell>{user.city}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            assignUser(user.userId);
-                          }}
-                          disabled={members.some((m) => m.userId === user.userId) || actionLoading === user.userId}
-                          startIcon={actionLoading === user.userId ? <CircularProgress size={16} /> : null}
-                        >
-                          Assign
-                        </Button>
-                      </TableCell>
+                      {!isCoreMember && (
+                        <TableCell>
+                          <Button
+                            variant="contained"
+                            color="primary"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              assignUser(user.userId);
+                            }}
+                            disabled={members.some((m) => m.userId === user.userId) || actionLoading === user.userId}
+                            startIcon={actionLoading === user.userId ? <CircularProgress size={16} /> : null}
+                          >
+                            Assign
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Card, CardContent, Typography, Button, Box, TextField } from '@mui/material';
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, Typography, Button, Box, TextField, CircularProgress } from '@mui/material';
 import api from '../../api/api'; // Fix import path
 import { toast } from 'react-toastify';
 import SecurityIcon from '@mui/icons-material/Security';
@@ -10,11 +10,30 @@ const SecuritySettings: React.FC = () => {
     const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
     const [secret, setSecret] = useState<string | null>(null);
     const [code, setCode] = useState("");
-    const [is2FAEnabled, setIs2FAEnabled] = useState<boolean>(false); // Ideally fetch this state from user profile on mount
+    const [is2FAEnabled, setIs2FAEnabled] = useState<boolean>(false);
     const [step, setStep] = useState<"initial" | "scan" | "verify">("initial");
+    const [loading, setLoading] = useState<boolean>(true);
 
-    // Check status on mount (Mock logic - in real app, fetch user profile)
-    // For this demo, we assume user knows their status or we fetch it.
+    // Fetch 2FA status on component mount
+    useEffect(() => {
+        const fetch2FAStatus = async () => {
+            try {
+                const response = await api.get('/users/get-user');
+                if (response.data.success) {
+                    const userIs2FAEnabled = response.data.data?.isTwoFactorEnabled || false;
+                    setIs2FAEnabled(userIs2FAEnabled);
+                    console.log('[SecuritySettings] 2FA Status fetched:', userIs2FAEnabled);
+                }
+            } catch (error: any) {
+                console.error('[SecuritySettings] Failed to fetch 2FA status:', error);
+                toast.error('Failed to fetch 2FA status');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetch2FAStatus();
+    }, []);
 
     const handleGenerate = async () => {
         try {
@@ -60,6 +79,22 @@ const SecuritySettings: React.FC = () => {
         }
     };
 
+    const handleReset = async () => {
+        try {
+            const res = await api.post('/2fa/reset');
+            if (res.data.success) {
+                setQrCodeUrl(res.data.data.qrCodeUrl);
+                setSecret(res.data.data.secret);
+                setStep("scan");
+                setIs2FAEnabled(false); // Backend automatically disables until re-verification
+                setCode("");
+                toast.success("2FA has been reset! Please scan the new QR code.");
+            }
+        } catch (err: any) {
+            toast.error(err.response?.data?.message || "Failed to reset 2FA");
+        }
+    };
+
     return (
         <div className="p-8 max-w-4xl mx-auto">
             <Typography variant="h4" className="mb-6 font-bold flex items-center gap-2">
@@ -68,6 +103,11 @@ const SecuritySettings: React.FC = () => {
 
             <Card className="shadow-lg rounded-xl">
                 <CardContent className="p-8">
+                    {loading ? (
+                        <div className="flex justify-center items-center p-12">
+                            <CircularProgress />
+                        </div>
+                    ) : (
                     <div className="flex flex-col md:flex-row gap-8">
                         {/* Status Section */}
                         <div className="flex-1">
@@ -93,6 +133,12 @@ const SecuritySettings: React.FC = () => {
                             {!is2FAEnabled && step === "initial" && (
                                 <Button variant="contained" color="primary" onClick={handleGenerate}>
                                     Enable 2FA
+                                </Button>
+                            )}
+
+                            {is2FAEnabled && step === "initial" && (
+                                <Button variant="outlined" color="warning" onClick={handleReset} className="mr-2">
+                                    Reset 2FA (Lost Access?)
                                 </Button>
                             )}
 
@@ -141,6 +187,7 @@ const SecuritySettings: React.FC = () => {
                             </div>
                         )}
                     </div>
+                    )}
                 </CardContent>
             </Card>
         </div>

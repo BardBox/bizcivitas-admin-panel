@@ -19,7 +19,7 @@ import {
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import api from "../../api/api";
-import { Country, State, City } from "country-state-city";
+import { Country, State } from "country-state-city";
 import PhoneInput from 'react-phone-input-2';
 import 'react-phone-input-2/lib/style.css';
 import { parsePhoneNumber } from 'libphonenumber-js';
@@ -72,6 +72,7 @@ interface FormData {
   city: string;
   zoneId: string;
   areaId: string;
+  dcpId: string; // ✅ Added for DCP assignment
   membershipType: string;
   business: string;
   businessSubcategory: string;
@@ -142,6 +143,7 @@ const ManualPaymentForm: React.FC = () => {
       city: "",
       zoneId: "",
       areaId: "",
+      dcpId: "", // ✅ Added
       membershipType: "",
       business: "",
       businessSubcategory: "",
@@ -167,6 +169,9 @@ const ManualPaymentForm: React.FC = () => {
   const [zonesLoading, setZonesLoading] = useState(false);
   const [areas, setAreas] = useState<any[]>([]);
   const [areasLoading, setAreasLoading] = useState(false);
+  // DCP States
+  const [dcps, setDcps] = useState<any[]>([]);
+  const [dcpsLoading, setDcpsLoading] = useState(false);
 
   const membershipType = useWatch({ control, name: "membershipType" });
   const feeType = useWatch({ control, name: "feeType" });
@@ -175,10 +180,11 @@ const ManualPaymentForm: React.FC = () => {
   const country = useWatch({ control, name: "country" });
   const state = useWatch({ control, name: "state" });
   const zoneId = useWatch({ control, name: "zoneId" });
+  const areaId = useWatch({ control, name: "areaId" }); // ✅ Track area changes
 
   const countryOptions = Country.getAllCountries();
   const stateOptions = country ? State.getStatesOfCountry(country) : [];
-  const cityOptions = country && state ? City.getCitiesOfState(country, state) : [];
+  // const cityOptions = country && state ? City.getCitiesOfState(country, state) : [];
 
   // Fetch Zones when State changes
   useEffect(() => {
@@ -186,31 +192,28 @@ const ManualPaymentForm: React.FC = () => {
       // Clear previous selections
       setZones([]);
       setAreas([]);
+      setDcps([]); // ✅ Also clear DCPs
 
       if (!country || !state) return;
 
-      // Only fetch zones if NOT a Digital Membership (or if you want zones for Digital too, remove check)
-      // But typically Zones are for Franchise structure.
-      // Based on requirement to "Replace region field", we focus on non-Digital.
-      if (!["Digital Membership", "Digital Membership Trial"].includes(membershipType)) {
-        setZonesLoading(true);
-        try {
-          const countryName = Country.getCountryByCode(country)?.name || "";
-          const stateName = State.getStateByCodeAndCountry(state, country)?.name || "";
+      // ✅ Fetch zones for ALL membership types (including Digital)
+      setZonesLoading(true);
+      try {
+        const countryName = Country.getCountryByCode(country)?.name || "";
+        const stateName = State.getStateByCodeAndCountry(state, country)?.name || "";
 
-          if (countryName && stateName) {
-            const fetchedZones = await getAllZones({
-              countryId: countryName,
-              stateId: stateName
-            });
-            setZones(fetchedZones || []);
-          }
-        } catch (error) {
-          console.error("Failed to fetch zones:", error);
-          toast.error("Failed to load zones.");
-        } finally {
-          setZonesLoading(false);
+        if (countryName && stateName) {
+          const fetchedZones = await getAllZones({
+            countryId: countryName,
+            stateId: stateName
+          });
+          setZones(fetchedZones || []);
         }
+      } catch (error) {
+        console.error("Failed to fetch zones:", error);
+        toast.error("Failed to load zones.");
+      } finally {
+        setZonesLoading(false);
       }
     };
 
@@ -218,6 +221,7 @@ const ManualPaymentForm: React.FC = () => {
     // Whenever State changes, reset dependent fields
     setValue("zoneId", "");
     setValue("areaId", "");
+    setValue("dcpId", ""); // ✅ Reset DCP
   }, [country, state, membershipType, setValue]);
 
   // Fetch Areas when Zone changes
@@ -225,6 +229,7 @@ const ManualPaymentForm: React.FC = () => {
     const fetchAreas = async () => {
       if (!zoneId) {
         setAreas([]);
+        setDcps([]); // ✅ Clear DCPs
         return;
       }
       setAreasLoading(true);
@@ -241,7 +246,35 @@ const ManualPaymentForm: React.FC = () => {
 
     fetchAreas();
     setValue("areaId", "");
+    setValue("dcpId", ""); // ✅ Reset DCP
   }, [zoneId, setValue]);
+
+  // ✅ Fetch DCPs when Area changes (for Digital memberships only)
+  useEffect(() => {
+    const fetchDCPs = async () => {
+      if (!areaId || !["Digital Membership", "Digital Membership Trial"].includes(membershipType)) {
+        setDcps([]);
+        return;
+      }
+
+      setDcpsLoading(true);
+      try {
+        // Fetch DCPs assigned to this area
+        const response = await api.get(`/franchise/users/role/dcp?areaId=${areaId}`);
+        const dcpData = response.data?.data || response.data || [];
+        setDcps(Array.isArray(dcpData) ? dcpData : []);
+      } catch (error) {
+        console.error("Failed to fetch DCPs:", error);
+        toast.error("Failed to load DCPs.");
+        setDcps([]); // Ensure dcps is always an array on error
+      } finally {
+        setDcpsLoading(false);
+      }
+    };
+
+    fetchDCPs();
+    setValue("dcpId", ""); // Reset DCP selection
+  }, [areaId, membershipType, setValue]);
 
   useEffect(() => {
     const fetchCategories = async () => {
@@ -379,6 +412,7 @@ const ManualPaymentForm: React.FC = () => {
       city: data.city || undefined,
       zoneId: data.zoneId || undefined,
       areaId: data.areaId || undefined,
+      dcpId: data.dcpId || undefined, // ✅ Added DCP assignment
       business: data.business?.trim() || undefined,
       businessSubcategory: data.businessSubcategory?.trim() || undefined,
       cashId: data.paymentMethod === "cash" ? data.cashId?.trim() : undefined,
@@ -420,6 +454,7 @@ const ManualPaymentForm: React.FC = () => {
           city: "",
           zoneId: "",
           areaId: "",
+          dcpId: "", // ✅ Added
           membershipType: "",
           business: "",
           businessSubcategory: "",
@@ -459,6 +494,7 @@ const ManualPaymentForm: React.FC = () => {
       city: "",
       zoneId: "",
       areaId: "",
+      dcpId: "", // ✅ Added
       membershipType: "",
       business: "",
       businessSubcategory: "",
@@ -471,6 +507,7 @@ const ManualPaymentForm: React.FC = () => {
     setResponse(null);
     setZones([]);
     setAreas([]);
+    setDcps([]); // ✅ Added
   };
 
   return (
@@ -768,97 +805,108 @@ const ManualPaymentForm: React.FC = () => {
               />
             </Grid>
 
-            {/* Conditional: City for Digital */}
-            {["Digital Membership", "Digital Membership Trial"].includes(membershipType) && (
+            {/* Zone - All Memberships */}
+            <Grid item xs={12} sm={4}>
+              <Controller
+                name="zoneId"
+                control={control}
+                render={({ field }) => (
+                  <FormControl fullWidth disabled={!state || zonesLoading} error={!!errors.zoneId}>
+                    <InputLabel>Zone / City *</InputLabel>
+                    <Select
+                      {...field}
+                      label="Zone / City *"
+                      onChange={(e) => {
+                        const selectedZoneId = e.target.value;
+                        field.onChange(selectedZoneId);
+                        // Auto-set city based on selected zone name
+                        const selectedZone = zones.find(z => z._id === selectedZoneId);
+                        if (selectedZone) {
+                          setValue("city", selectedZone.zoneName);
+                        } else {
+                          setValue("city", "");
+                        }
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>Select a Zone / City</em>
+                      </MenuItem>
+                      {zones.map((zone) => (
+                        <MenuItem key={zone._id} value={zone._id}>
+                          {zone.zoneName}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {zonesLoading && <Typography variant="caption">Loading zones...</Typography>}
+                    {errors.zoneId && <Typography variant="caption" color="error">{errors.zoneId.message}</Typography>}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            {/* Area - All Memberships */}
+            <Grid item xs={12} sm={4}>
+              <Controller
+                name="areaId"
+                control={control}
+                render={({ field }) => (
+                  <FormControl fullWidth disabled={!zoneId || areasLoading} error={!!errors.areaId}>
+                    <InputLabel>Area *</InputLabel>
+                    <Select
+                      {...field}
+                      label="Area *"
+                      onChange={(e) => field.onChange(e.target.value)}
+                    >
+                      <MenuItem value="">
+                        <em>Select an Area</em>
+                      </MenuItem>
+                      {areas.map((area) => (
+                        <MenuItem key={area._id} value={area._id}>
+                          {area.areaName}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                    {areasLoading && <Typography variant="caption">Loading areas...</Typography>}
+                    {errors.areaId && <Typography variant="caption" color="error">{errors.areaId.message}</Typography>}
+                  </FormControl>
+                )}
+              />
+            </Grid>
+
+            {/* DCP Selection - Only for Digital Memberships */}
+            {["Digital Membership", "Digital Membership Trial"].includes(membershipType) && areaId && (
               <Grid item xs={12} sm={4}>
                 <Controller
-                  name="city"
+                  name="dcpId"
                   control={control}
-                  rules={{ required: "City is required" }}
                   render={({ field }) => (
-                    <Autocomplete
-                      options={cityOptions}
-                      getOptionLabel={(option) => option.name}
-                      value={cityOptions.find((option) => option.name === field.value) || null}
-                      onChange={(_, newValue) => {
-                        field.onChange(newValue?.name || "");
-                      }}
-                      disabled={!country || !state}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          label="City *"
-                          variant="outlined"
-                          error={!!errors.city}
-                          helperText={errors.city?.message || (!country || !state ? "Please select country and state first" : "")}
-                          required
-                        />
+                    <FormControl fullWidth disabled={!areaId || dcpsLoading} error={!!errors.dcpId}>
+                      <InputLabel>Assign to DCP (Optional)</InputLabel>
+                      <Select
+                        {...field}
+                        label="Assign to DCP (Optional)"
+                        onChange={(e) => field.onChange(e.target.value)}
+                      >
+                        <MenuItem value="">
+                          <em>No DCP Assignment</em>
+                        </MenuItem>
+                        {dcps.map((dcp: any) => (
+                          <MenuItem key={dcp._id} value={dcp._id}>
+                            {dcp.fname} {dcp.lname}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      {dcpsLoading && <Typography variant="caption">Loading DCPs...</Typography>}
+                      {dcps.length === 0 && !dcpsLoading && (
+                        <Typography variant="caption" color="textSecondary">
+                          No DCPs assigned to this area
+                        </Typography>
                       )}
-                    />
+                      {errors.dcpId && <Typography variant="caption" color="error">{errors.dcpId.message}</Typography>}
+                    </FormControl>
                   )}
                 />
               </Grid>
-            )}
-
-            {/* Conditional: Zone/Area for Non-Digital (Default view) */}
-            {!["Digital Membership", "Digital Membership Trial"].includes(membershipType) && (
-              <>
-                <Grid item xs={12} sm={4}>
-                  <Controller
-                    name="zoneId"
-                    control={control}
-                    render={({ field }) => (
-                      <FormControl fullWidth disabled={!state || zonesLoading} error={!!errors.zoneId}>
-                        <InputLabel>Zone / City *</InputLabel>
-                        <Select
-                          {...field}
-                          label="Zone / City *"
-                          onChange={(e) => field.onChange(e.target.value)}
-                        >
-                          <MenuItem value="">
-                            <em>Select a Zone / City</em>
-                          </MenuItem>
-                          {zones.map((zone) => (
-                            <MenuItem key={zone._id} value={zone._id}>
-                              {zone.zoneName}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                        {zonesLoading && <Typography variant="caption">Loading zones...</Typography>}
-                        {errors.zoneId && <Typography variant="caption" color="error">{errors.zoneId.message}</Typography>}
-                      </FormControl>
-                    )}
-                  />
-                </Grid>
-
-                <Grid item xs={12} sm={4}>
-                  <Controller
-                    name="areaId"
-                    control={control}
-                    render={({ field }) => (
-                      <FormControl fullWidth disabled={!zoneId || areasLoading} error={!!errors.areaId}>
-                        <InputLabel>Area *</InputLabel>
-                        <Select
-                          {...field}
-                          label="Area *"
-                          onChange={(e) => field.onChange(e.target.value)}
-                        >
-                          <MenuItem value="">
-                            <em>Select an Area</em>
-                          </MenuItem>
-                          {areas.map((area) => (
-                            <MenuItem key={area._id} value={area._id}>
-                              {area.areaName}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                        {areasLoading && <Typography variant="caption">Loading areas...</Typography>}
-                        {errors.areaId && <Typography variant="caption" color="error">{errors.areaId.message}</Typography>}
-                      </FormControl>
-                    )}
-                  />
-                </Grid>
-              </>
             )}
 
 
