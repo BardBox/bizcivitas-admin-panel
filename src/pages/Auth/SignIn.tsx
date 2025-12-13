@@ -64,20 +64,17 @@ export default function SignIn() {
 
       setIsLoading(false);
       setLoading(false);
-      toast.success("Login successful!");
 
-      setTimeout(() => {
-        const userRole = localStorage.getItem("role");
+      const userRole = localStorage.getItem("role");
 
-        if (userRole === "admin") {
-          navigate("/dashboard");
-        } else if (userRole === "core-member") {
-          navigate("/dashboard-core");
-        } else {
-          toast.error("Please use the Franchise Partner login page");
-          navigate("/franchise-login");
-        }
-      }, 500);
+      if (userRole === "admin") {
+        navigate("/dashboard");
+      } else if (userRole === "core-member") {
+        navigate("/dashboard-core");
+      } else {
+        toast.error("Please use the Franchise Partner login page");
+        navigate("/franchise-login");
+      }
 
     } catch (error: any) {
       console.error("Login error:", error);

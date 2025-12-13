@@ -8,6 +8,8 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   showCloseButton?: boolean;
   closeOnOutsideClick?: boolean;
+  bodyPadding?: string;
+  headerPadding?: string;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -17,7 +19,9 @@ const Modal: React.FC<ModalProps> = ({
   children,
   size = 'md',
   showCloseButton = true,
-  closeOnOutsideClick = true
+  closeOnOutsideClick = true,
+  bodyPadding = 'p-6',
+  headerPadding = 'p-6'
 }) => {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
@@ -55,7 +59,7 @@ const Modal: React.FC<ModalProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className={`flex items-center justify-between ${headerPadding} border-b border-gray-200`}>
             <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
             {showCloseButton && (
               <button
@@ -77,8 +81,8 @@ const Modal: React.FC<ModalProps> = ({
             )}
           </div>
 
-          {/* Body */}
-          <div className="p-6 overflow-y-auto flex-1">{children}</div>
+  {/* Body */}
+          <div className={`${bodyPadding} overflow-y-auto flex-1`}>{children}</div>
         </div>
       </div>
     </div>

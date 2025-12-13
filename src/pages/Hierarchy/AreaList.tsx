@@ -427,9 +427,11 @@ const AreaList: React.FC = () => {
                 onClose={() => setIsModalOpen(false)}
                 title={editingId ? "Edit Area" : "Create New Area"}
                 size="xl"
+                bodyPadding="p-4"
+                headerPadding="p-4"
             >
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                         {/* Zone Selection */}
                         <div className={selectedZone ? "" : "md:col-span-2"}>
                             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -532,7 +534,7 @@ const AreaList: React.FC = () => {
                         </div>
                     )}
 
-                    <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                    <div className="flex justify-end space-x-3 mt-4 pt-4 border-t">
                         <Button variant="secondary" onClick={() => setIsModalOpen(false)} type="button">
                             Cancel
                         </Button>
@@ -549,8 +551,10 @@ const AreaList: React.FC = () => {
                 onClose={closePartnerModal}
                 title="Step 2: Assign Area Franchise Partner"
                 size="lg"
+                bodyPadding="p-4"
+                headerPadding="p-4"
             >
-                <form onSubmit={handlePartnerAssignment} className="space-y-6">
+                <form onSubmit={handlePartnerAssignment} className="space-y-4">
                     {/* Info banner */}
                     <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                         <p className="text-sm text-green-800 font-medium">
@@ -679,7 +683,7 @@ const AreaList: React.FC = () => {
                         </div>
                     )}
 
-                    <div className="flex justify-end space-x-3 mt-6 pt-4 border-t">
+                    <div className="flex justify-end space-x-3 mt-4 pt-4 border-t">
                         <Button variant="secondary" onClick={closePartnerModal} type="button">
                             Skip Assignment
                         </Button>

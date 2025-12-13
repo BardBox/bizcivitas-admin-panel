@@ -59,8 +59,8 @@ const CommunityMembersPage: React.FC = () => {
   const [searchKeyword, setSearchKeyword] = useState("");
   const [searchUsersKeyword, setSearchUsersKeyword] = useState("");
 
-  // Check if user is a core member
-  const isCoreMember = authContext?.isCoreMember() || false;
+  // Check if user is admin - only show buttons if auth is loaded
+  const isAdmin = authContext?.user?.role === "admin";
 
   const fetchMembers = async () => {
     if (!communityId) return;
@@ -275,7 +275,7 @@ const CommunityMembersPage: React.FC = () => {
                     <TableCell>Company Name</TableCell>
                     <TableCell>Industry</TableCell>
                     <TableCell>City</TableCell>
-                    {!isCoreMember && <TableCell>Actions</TableCell>}
+                    {isAdmin && <TableCell>Actions</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -295,7 +295,7 @@ const CommunityMembersPage: React.FC = () => {
                       <TableCell>{member.companyName}</TableCell>
                       <TableCell>{member.industry}</TableCell>
                       <TableCell>{member.city}</TableCell>
-                      {!isCoreMember && (
+                      {isAdmin && (
                         <TableCell>
                           <Button
                             variant="contained"
@@ -362,7 +362,7 @@ const CommunityMembersPage: React.FC = () => {
                     <TableCell>Company Name</TableCell>
                     <TableCell>Industry</TableCell>
                     <TableCell>City</TableCell>
-                    {!isCoreMember && <TableCell>Action</TableCell>}
+                    {isAdmin && <TableCell>Action</TableCell>}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -381,7 +381,7 @@ const CommunityMembersPage: React.FC = () => {
                       <TableCell>{user.companyName}</TableCell>
                       <TableCell>{user.industry}</TableCell>
                       <TableCell>{user.city}</TableCell>
-                      {!isCoreMember && (
+                      {isAdmin && (
                         <TableCell>
                           <Button
                             variant="contained"

@@ -281,11 +281,13 @@ const CommissionDashboard: React.FC = () => {
           onClose={() => setIsDetailsModalOpen(false)}
           title="Commission Details"
           size="xl"
+          bodyPadding="p-4"
+          headerPadding="p-4"
         >
-          <div className="space-y-6">
+          <div className="space-y-3">
             {/* Source Member Info */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Source Member</h4>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <h4 className="font-semibold mb-1">Source Member</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <span className="text-gray-600">Name:</span>
@@ -312,7 +314,7 @@ const CommissionDashboard: React.FC = () => {
 
             {/* Amount Breakdown */}
             <div>
-              <h4 className="font-semibold mb-3">Amount Breakdown</h4>
+              <h4 className="font-semibold mb-2">Amount Breakdown</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-blue-50 p-3 rounded">
                   <p className="text-sm text-gray-600">Base Amount</p>
@@ -334,8 +336,8 @@ const CommissionDashboard: React.FC = () => {
 
             {/* Distribution Hierarchy */}
             <div>
-              <h4 className="font-semibold mb-3">Commission Distribution</h4>
-              <div className="space-y-3">
+              <h4 className="font-semibold mb-2">Commission Distribution</h4>
+              <div className="space-y-2">
                 {/* Master Franchise */}
                 {selectedCommission.distribution.mf.userId && (
                   <div className="border border-gray-200 p-3 rounded-lg">
@@ -425,8 +427,8 @@ const CommissionDashboard: React.FC = () => {
             </div>
 
             {/* Payment Info */}
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h4 className="font-semibold mb-2">Payment Information</h4>
+            <div className="bg-gray-50 p-3 rounded-lg">
+              <h4 className="font-semibold mb-1">Payment Information</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
                   <span className="text-gray-600">Payment ID:</span>

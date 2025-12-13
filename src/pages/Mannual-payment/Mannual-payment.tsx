@@ -20,9 +20,9 @@ import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import api from "../../api/api";
 import { Country, State } from "country-state-city";
-import PhoneInput from 'react-phone-input-2';
-import 'react-phone-input-2/lib/style.css';
-import { parsePhoneNumber } from 'libphonenumber-js';
+import PhoneInput from "react-phone-input-2";
+import "react-phone-input-2/lib/style.css";
+import { parsePhoneNumber } from "libphonenumber-js";
 import { getAllZones } from "../../api/zoneApi";
 import { getAreasByZone } from "../../api/areaApi";
 
@@ -65,6 +65,7 @@ interface FormData {
   mobile: string;
   fname: string;
   lname: string;
+  referrerType: string; // ✅ New field for referrer type filter
   referBy: string;
   region: string;
   country: string;
@@ -95,9 +96,21 @@ interface ApiResponse {
 }
 
 const membershipFees = {
-  "Core Membership": { registration: 25000, annual: 300000, community_launching: 225000 },
-  "Flagship Membership": { registration: 25000, annual: 300000, meeting: 25000 },
-  "Industria Membership": { registration: 25000, annual: 300000, meeting: 25000 },
+  "Core Membership": {
+    registration: 25000,
+    annual: 300000,
+    community_launching: 225000,
+  },
+  "Flagship Membership": {
+    registration: 25000,
+    annual: 300000,
+    meeting: 25000,
+  },
+  "Industria Membership": {
+    registration: 25000,
+    annual: 300000,
+    meeting: 25000,
+  },
   "Digital Membership": { registration: 6999 },
   "Digital Membership Trial": { registration: 0 },
 };
@@ -136,6 +149,7 @@ const ManualPaymentForm: React.FC = () => {
       mobile: "",
       fname: "",
       lname: "",
+      referrerType: "",
       referBy: "",
       region: "",
       country: "IN",
@@ -157,21 +171,22 @@ const ManualPaymentForm: React.FC = () => {
 
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState<ApiResponse | null>(null);
+  const [allReferrers, setAllReferrers] = useState<
+    (ReferrerOption & { type: string })[]
+  >([]);
   const [referrerOptions, setReferrerOptions] = useState<ReferrerOption[]>([]);
   const [referrersLoading, setReferrersLoading] = useState(false);
+  const [dcps, setDcps] = useState<any[]>([]);
+  const [dcpsLoading, setDcpsLoading] = useState(false);
+  const [zones, setZones] = useState<any[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [citiesInZone, setCitiesInZone] = useState<string[]>([]);
+  const [areas, setAreas] = useState<any[]>([]);
+  const [areasLoading, setAreasLoading] = useState(false);
   const [categories, setCategories] = useState<string[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [subcategories, setSubcategories] = useState<string[]>([]);
   const [subcategoriesLoading, setSubcategoriesLoading] = useState(false);
-
-  // Zone and Area States
-  const [zones, setZones] = useState<any[]>([]);
-  const [zonesLoading, setZonesLoading] = useState(false);
-  const [areas, setAreas] = useState<any[]>([]);
-  const [areasLoading, setAreasLoading] = useState(false);
-  // DCP States
-  const [dcps, setDcps] = useState<any[]>([]);
-  const [dcpsLoading, setDcpsLoading] = useState(false);
 
   const membershipType = useWatch({ control, name: "membershipType" });
   const feeType = useWatch({ control, name: "feeType" });
@@ -181,6 +196,7 @@ const ManualPaymentForm: React.FC = () => {
   const state = useWatch({ control, name: "state" });
   const zoneId = useWatch({ control, name: "zoneId" });
   const areaId = useWatch({ control, name: "areaId" }); // ✅ Track area changes
+  const referrerType = useWatch({ control, name: "referrerType" }); // ✅ Track referrer type
 
   const countryOptions = Country.getAllCountries();
   const stateOptions = country ? State.getStatesOfCountry(country) : [];
@@ -200,12 +216,13 @@ const ManualPaymentForm: React.FC = () => {
       setZonesLoading(true);
       try {
         const countryName = Country.getCountryByCode(country)?.name || "";
-        const stateName = State.getStateByCodeAndCountry(state, country)?.name || "";
+        const stateName =
+          State.getStateByCodeAndCountry(state, country)?.name || "";
 
         if (countryName && stateName) {
           const fetchedZones = await getAllZones({
             countryId: countryName,
-            stateId: stateName
+            stateId: stateName,
           });
           setZones(fetchedZones || []);
         }
@@ -220,6 +237,8 @@ const ManualPaymentForm: React.FC = () => {
     fetchZones();
     // Whenever State changes, reset dependent fields
     setValue("zoneId", "");
+    setValue("city", "");
+    setCitiesInZone([]);
     setValue("areaId", "");
     setValue("dcpId", ""); // ✅ Reset DCP
   }, [country, state, membershipType, setValue]);
@@ -252,7 +271,12 @@ const ManualPaymentForm: React.FC = () => {
   // ✅ Fetch DCPs when Area changes (for Digital memberships only)
   useEffect(() => {
     const fetchDCPs = async () => {
-      if (!areaId || !["Digital Membership", "Digital Membership Trial"].includes(membershipType)) {
+      if (
+        !areaId ||
+        !["Digital Membership", "Digital Membership Trial"].includes(
+          membershipType
+        )
+      ) {
         setDcps([]);
         return;
       }
@@ -260,12 +284,14 @@ const ManualPaymentForm: React.FC = () => {
       setDcpsLoading(true);
       try {
         // Fetch DCPs assigned to this area
-        const response = await api.get(`/franchise/users/role/dcp?areaId=${areaId}`);
+        const response = await api.get(`/franchise-partners`, {
+          params: { role: "dcp", areaId },
+        });
         const dcpData = response.data?.data || response.data || [];
         setDcps(Array.isArray(dcpData) ? dcpData : []);
       } catch (error) {
         console.error("Failed to fetch DCPs:", error);
-        toast.error("Failed to load DCPs.");
+        // Don't show error toast since DCP assignment is optional
         setDcps([]); // Ensure dcps is always an array on error
       } finally {
         setDcpsLoading(false);
@@ -281,10 +307,14 @@ const ManualPaymentForm: React.FC = () => {
       setCategoriesLoading(true);
       try {
         const response = await api.get("/categories");
-        const fetchedCategories = Array.isArray(response.data) ? response.data : [];
+        const fetchedCategories = Array.isArray(response.data)
+          ? response.data
+          : [];
         setCategories(fetchedCategories);
       } catch (error: any) {
-        toast.error(error.response?.data?.message || "Failed to fetch categories.");
+        toast.error(
+          error.response?.data?.message || "Failed to fetch categories."
+        );
       } finally {
         setCategoriesLoading(false);
       }
@@ -301,15 +331,19 @@ const ManualPaymentForm: React.FC = () => {
     const fetchSubcategories = async () => {
       setSubcategoriesLoading(true);
       try {
-        const response = await api.get(`/subcategories/${encodeURIComponent(business)}`);
+        const response = await api.get(
+          `/subcategories/${encodeURIComponent(business)}`
+        );
         const fetchedSubcategories = Array.isArray(response.data?.data)
           ? response.data.data
           : Array.isArray(response.data)
-            ? response.data
-            : [];
+          ? response.data
+          : [];
         setSubcategories(fetchedSubcategories);
       } catch (error: any) {
-        toast.error(error.response?.data?.message || "Failed to fetch subcategories.");
+        toast.error(
+          error.response?.data?.message || "Failed to fetch subcategories."
+        );
       } finally {
         setSubcategoriesLoading(false);
       }
@@ -322,20 +356,75 @@ const ManualPaymentForm: React.FC = () => {
     const fetchReferrers = async () => {
       setReferrersLoading(true);
       try {
-        const response = await api.get("/core-members");
-        if (response.data.success) {
-          const options = Array.isArray(response.data.data)
-            ? response.data.data.map((user: User) => ({
-              id: user._id,
-              label: `${user.fname} ${user.lname || ""}`.trim(),
-            }))
-            : [];
-          setReferrerOptions(options);
-        } else {
-          toast.error(response.data.message || "Failed to fetch referrers.");
-        }
+        // Fetch all potential referrers: Core members + Franchise partners
+        const [usersResponse, franchiseResponse] = await Promise.all([
+          api.get("/users/getallusers"),
+          api.get("/franchise-partners", {
+            params: {
+              role: ["master-franchise", "area-franchise"],
+            },
+          }),
+        ]);
+
+        // users endpoint returns { data: { users: [ { user: {...} }, ... ] } }
+        const members = Array.isArray(usersResponse.data?.data?.users)
+          ? usersResponse.data.data.users.map((u: any) => u.user)
+          : [];
+        const franchises = Array.isArray(franchiseResponse.data?.data)
+          ? franchiseResponse.data.data
+          : [];
+
+        const referrersWithType = [
+          ...members.map((user: any) => ({
+            id: user.userId || user._id,
+            label: `${
+              user.name || `${user.fname || ""} ${user.lname || ""}`
+            }`.trim(),
+            type: user.membershipType || "",
+            source: "member",
+            city: user.city || user.region || "",
+            area: "",
+          })),
+          ...franchises.map((franchise: any) => {
+            const franchiseType =
+              franchise.role === "master-franchise"
+                ? "Zone Partner"
+                : "Area Partner";
+            // For area partners, get city from their area's zone
+            let city = "";
+            let areaName = "";
+
+            if (franchise.areaId && typeof franchise.areaId === "object") {
+              areaName = franchise.areaId.areaName || "";
+              // Get city from zone
+              if (
+                franchise.areaId.zoneId &&
+                typeof franchise.areaId.zoneId === "object"
+              ) {
+                city = franchise.areaId.zoneId.zoneName || ""; // Zone name is typically the city
+              }
+            }
+
+            return {
+              id: franchise._id,
+              label:
+                `${franchise.fname} ${franchise.lname || ""}`.trim() +
+                (areaName ? ` (${areaName})` : ""),
+              type: franchiseType,
+              source: "franchise",
+              city: city,
+              area: areaName,
+            };
+          }),
+        ];
+
+        setAllReferrers(referrersWithType);
+        setReferrerOptions(referrersWithType); // Show all by default
       } catch (error: any) {
-        toast.error(error.response?.data?.message || "Failed to fetch referrers.");
+        console.error("Failed to fetch referrers:", error);
+        toast.error(
+          error.response?.data?.message || "Failed to fetch referrers."
+        );
       } finally {
         setReferrersLoading(false);
       }
@@ -343,9 +432,34 @@ const ManualPaymentForm: React.FC = () => {
     fetchReferrers();
   }, []);
 
+  // Filter referrers based on selected referrerType
   useEffect(() => {
-    if (membershipType && feeType && membershipFees[membershipType as MembershipType]?.[feeType as keyof typeof membershipFees[MembershipType]]) {
-      setValue("amount", membershipFees[membershipType as MembershipType][feeType as keyof typeof membershipFees[MembershipType]]);
+    if (!referrerType) {
+      setReferrerOptions(allReferrers);
+    } else {
+      // Strict filtering: show only referrers whose `type` matches the selected filter.
+      // Example: selecting "Flagship Membership" shows only users with membershipType === "Flagship Membership".
+      const filtered = allReferrers.filter((r) => r.type === referrerType);
+      setReferrerOptions(filtered);
+    }
+    // Reset referBy when type changes
+    setValue("referBy", "");
+  }, [referrerType, allReferrers, setValue]);
+
+  useEffect(() => {
+    if (
+      membershipType &&
+      feeType &&
+      membershipFees[membershipType as MembershipType]?.[
+        feeType as keyof (typeof membershipFees)[MembershipType]
+      ]
+    ) {
+      setValue(
+        "amount",
+        membershipFees[membershipType as MembershipType][
+          feeType as keyof (typeof membershipFees)[MembershipType]
+        ]
+      );
     } else {
       setValue("amount", 0);
     }
@@ -357,27 +471,37 @@ const ManualPaymentForm: React.FC = () => {
     if (!/\S+@\S+\.\S+/.test(data.email)) return "Invalid email format";
     if (!data.membershipType?.trim()) return "Membership type is required";
     if (!data.feeType?.trim()) return "Fee type is required";
-    if (data.membershipType !== "Digital Membership Trial" && !data.paymentMethod?.trim())
+    if (
+      data.membershipType !== "Digital Membership Trial" &&
+      !data.paymentMethod?.trim()
+    )
       return "Payment method is required";
     if (data.amount < 0) return "Amount must be greater than or equal to 0";
-    if (data.cashId && data.paymentMethod !== "cash") return "Cash ID is only allowed for cash payments";
-    if (data.checkId && data.paymentMethod !== "check") return "Check ID is only allowed for check payments";
+    if (data.cashId && data.paymentMethod !== "cash")
+      return "Cash ID is only allowed for cash payments";
+    if (data.checkId && data.paymentMethod !== "check")
+      return "Check ID is only allowed for check payments";
 
     // Updated Location validation
     // Country and State are now required for ALL memberships to drive either City or Zone logic
     if (!data.country || !data.state) return "Country and State are required";
 
-    if (["Digital Membership", "Digital Membership Trial"].includes(data.membershipType)) {
-      if (!data.city) return "City is required for Digital Membership";
-    } else {
-      // For Non-Digital, we expect Zone and Area
-      if (!data.zoneId) return "Zone is required";
+    // Zone, City, and Area are required for ALL memberships
+    if (!data.zoneId) return "Zone is required";
+    if (!data.city) return "City is required";
+
+    if (
+      !["Digital Membership", "Digital Membership Trial"].includes(
+        data.membershipType
+      )
+    ) {
+      // For Non-Digital memberships, Area is also required
       if (!data.areaId) return "Area is required";
     }
 
     if (data.mobile) {
       try {
-        const parsed = parsePhoneNumber('+' + data.mobile);
+        const parsed = parsePhoneNumber("+" + data.mobile);
         if (!parsed.isValid()) return "Invalid mobile number";
       } catch {
         return "Invalid phone number format";
@@ -389,8 +513,13 @@ const ManualPaymentForm: React.FC = () => {
   const preparePayload = (data: FormData) => {
     // Determine region name from selected Zone for backward compatibility
     let regionName = data.region;
-    if (data.zoneId && !["Digital Membership", "Digital Membership Trial"].includes(data.membershipType)) {
-      const selectedZone = zones.find(z => z._id === data.zoneId);
+    if (
+      data.zoneId &&
+      !["Digital Membership", "Digital Membership Trial"].includes(
+        data.membershipType
+      )
+    ) {
+      const selectedZone = zones.find((z) => z._id === data.zoneId);
       if (selectedZone) {
         regionName = selectedZone.zoneName;
       }
@@ -416,10 +545,14 @@ const ManualPaymentForm: React.FC = () => {
       business: data.business?.trim() || undefined,
       businessSubcategory: data.businessSubcategory?.trim() || undefined,
       cashId: data.paymentMethod === "cash" ? data.cashId?.trim() : undefined,
-      checkId: data.paymentMethod === "check" ? data.checkId?.trim() : undefined,
+      checkId:
+        data.paymentMethod === "check" ? data.checkId?.trim() : undefined,
     };
     Object.keys(payload).forEach((key) => {
-      if (payload[key as keyof typeof payload] === undefined || payload[key as keyof typeof payload] === "") {
+      if (
+        payload[key as keyof typeof payload] === undefined ||
+        payload[key as keyof typeof payload] === ""
+      ) {
         delete payload[key as keyof typeof payload];
       }
     });
@@ -440,13 +573,16 @@ const ManualPaymentForm: React.FC = () => {
       });
       if (response.data.success || response.data.status === 201) {
         setResponse(response.data);
-        toast.success(response.data.message || "Payment recorded successfully.");
+        toast.success(
+          response.data.message || "Payment recorded successfully."
+        );
         // Reset Logic
         reset({
           email: "",
           mobile: "",
           fname: "",
           lname: "",
+          referrerType: "",
           referBy: "",
           region: "",
           country: "IN",
@@ -464,6 +600,8 @@ const ManualPaymentForm: React.FC = () => {
           cashId: "",
           checkId: "",
         });
+        // Clear state arrays
+        setCitiesInZone([]);
       } else {
         toast.error(response.data.message || "Failed to record payment.");
       }
@@ -472,7 +610,9 @@ const ManualPaymentForm: React.FC = () => {
       if (error.response?.data?.message) {
         toast.error(error.response.data.message);
       } else if (error.message?.includes("timeout")) {
-        toast.error("Request timeout. Please check your connection and try again.");
+        toast.error(
+          "Request timeout. Please check your connection and try again."
+        );
       } else {
         toast.error("Failed to record payment.");
       }
@@ -487,6 +627,7 @@ const ManualPaymentForm: React.FC = () => {
       mobile: "",
       fname: "",
       lname: "",
+      referrerType: "",
       referBy: "",
       region: "",
       country: "IN",
@@ -506,6 +647,7 @@ const ManualPaymentForm: React.FC = () => {
     });
     setResponse(null);
     setZones([]);
+    setCitiesInZone([]);
     setAreas([]);
     setDcps([]); // ✅ Added
   };
@@ -595,10 +737,10 @@ const ManualPaymentForm: React.FC = () => {
                   validate: (value) => {
                     if (!value) return true;
                     try {
-                      const parsed = parsePhoneNumber('+' + value);
-                      return parsed.isValid() || 'Invalid mobile number';
+                      const parsed = parsePhoneNumber("+" + value);
+                      return parsed.isValid() || "Invalid mobile number";
                     } catch {
-                      return 'Invalid phone number format';
+                      return "Invalid phone number format";
                     }
                   },
                 }}
@@ -606,23 +748,25 @@ const ManualPaymentForm: React.FC = () => {
                   <div>
                     <PhoneInput
                       {...field}
-                      country={'in'}
+                      country={"in"}
                       enableSearch
                       countryCodeEditable={false}
                       placeholder="Enter mobile number (optional)"
                       inputStyle={{
-                        width: '100%',
-                        height: '56px',
-                        fontSize: '16px',
-                        paddingLeft: '56px',
-                        borderRadius: '4px',
-                        border: errors.mobile ? '1px solid red' : '1px solid rgba(0, 0, 0, 0.23)',
+                        width: "100%",
+                        height: "56px",
+                        fontSize: "16px",
+                        paddingLeft: "56px",
+                        borderRadius: "4px",
+                        border: errors.mobile
+                          ? "1px solid red"
+                          : "1px solid rgba(0, 0, 0, 0.23)",
                       }}
                       buttonStyle={{
-                        border: 'none',
-                        backgroundColor: 'transparent',
+                        border: "none",
+                        backgroundColor: "transparent",
                       }}
-                      containerStyle={{ width: '100%' }}
+                      containerStyle={{ width: "100%" }}
                       onChange={(value) => field.onChange(value)}
                     />
                     {errors.mobile && (
@@ -652,7 +796,9 @@ const ManualPaymentForm: React.FC = () => {
                   rules={{ required: "Membership Type is required" }}
                   render={({ field }) => (
                     <FormControl fullWidth error={!!errors.membershipType}>
-                      <InputLabel id="membership-type-label">Membership Type *</InputLabel>
+                      <InputLabel id="membership-type-label">
+                        Membership Type *
+                      </InputLabel>
                       <Select
                         {...field}
                         labelId="membership-type-label"
@@ -663,7 +809,8 @@ const ManualPaymentForm: React.FC = () => {
                           setValue("feeType", "");
                           setValue(
                             "amount",
-                            membershipFees[e.target.value as MembershipType]?.registration || 0
+                            membershipFees[e.target.value as MembershipType]
+                              ?.registration || 0
                           );
                           setValue("cashId", "");
                           setValue("checkId", "");
@@ -688,6 +835,46 @@ const ManualPaymentForm: React.FC = () => {
                   )}
                 />
               </Grid>
+
+              {/* Referrer Type Filter */}
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="referrerType"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth>
+                      <InputLabel>Referrer Type (Filter)</InputLabel>
+                      <Select
+                        {...field}
+                        label="Referrer Type (Filter)"
+                        onChange={(e) => field.onChange(e.target.value)}
+                      >
+                        <MenuItem value="">
+                          <em>All Types</em>
+                        </MenuItem>
+                        <MenuItem value="Core Membership">Core Member</MenuItem>
+                        <MenuItem value="Flagship Membership">
+                          Flagship Member
+                        </MenuItem>
+                        <MenuItem value="Industria Membership">
+                          Industria Member
+                        </MenuItem>
+                        <MenuItem value="Zone Partner">Zone Partner</MenuItem>
+                        <MenuItem value="Area Partner">Area Partner</MenuItem>
+                      </Select>
+                      <Typography
+                        variant="caption"
+                        color="textSecondary"
+                        sx={{ mt: 0.5 }}
+                      >
+                        Filter referrers by type
+                      </Typography>
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+
+              {/* Referred By Name */}
               <Grid item xs={12} sm={6}>
                 <Controller
                   name="referBy"
@@ -697,24 +884,43 @@ const ManualPaymentForm: React.FC = () => {
                       options={referrerOptions}
                       loading={referrersLoading}
                       getOptionLabel={(option) => option.label}
-                      isOptionEqualToValue={(option, value) => option.id === value.id}
-                      value={referrerOptions.find((option) => option.id === field.value) || null}
-                      onChange={(_, newValue) => field.onChange(newValue?.id || "")}
+                      isOptionEqualToValue={(option, value) =>
+                        option.id === value.id
+                      }
+                      value={
+                        referrerOptions.find(
+                          (option) => option.id === field.value
+                        ) || null
+                      }
+                      onChange={(_, newValue) =>
+                        field.onChange(newValue?.id || "")
+                      }
+                      // Group Area Partners by city
+                      groupBy={
+                        referrerType === "Area Partner"
+                          ? (option: any) => option.city || "Unknown City"
+                          : undefined
+                      }
                       renderInput={(params) => (
                         <TextField
                           {...params}
-                          label="Referrer (Optional)"
+                          label="Referred By (Optional)"
                           variant="outlined"
                           fullWidth
                           error={!!errors.referBy}
                           helperText={
-                            errors.referBy?.message || (referrersLoading ? "Loading referrers..." : "")
+                            errors.referBy?.message ||
+                            (referrersLoading
+                              ? "Loading referrers..."
+                              : "Defaults to Bizcivitas if not selected")
                           }
                           InputProps={{
                             ...params.InputProps,
                             endAdornment: (
                               <>
-                                {referrersLoading && <CircularProgress color="inherit" size={20} />}
+                                {referrersLoading && (
+                                  <CircularProgress color="inherit" size={20} />
+                                )}
                                 {params.InputProps.endAdornment}
                               </>
                             ),
@@ -749,13 +955,18 @@ const ManualPaymentForm: React.FC = () => {
                   <Autocomplete
                     options={countryOptions}
                     getOptionLabel={(option) => option.name}
-                    value={countryOptions.find((option) => option.isoCode === field.value) || null}
+                    value={
+                      countryOptions.find(
+                        (option) => option.isoCode === field.value
+                      ) || null
+                    }
                     onChange={(_, newValue) => {
                       field.onChange(newValue?.isoCode || "");
                       setValue("state", "");
                       setValue("city", "");
                       setValue("zoneId", "");
                       setValue("areaId", "");
+                      setCitiesInZone([]);
                     }}
                     renderInput={(params) => (
                       <TextField
@@ -782,12 +993,17 @@ const ManualPaymentForm: React.FC = () => {
                   <Autocomplete
                     options={stateOptions}
                     getOptionLabel={(option) => option.name}
-                    value={stateOptions.find((option) => option.isoCode === field.value) || null}
+                    value={
+                      stateOptions.find(
+                        (option) => option.isoCode === field.value
+                      ) || null
+                    }
                     onChange={(_, newValue) => {
                       field.onChange(newValue?.isoCode || "");
                       setValue("city", "");
                       setValue("zoneId", "");
                       setValue("areaId", "");
+                      setCitiesInZone([]);
                     }}
                     disabled={!country}
                     renderInput={(params) => (
@@ -796,7 +1012,10 @@ const ManualPaymentForm: React.FC = () => {
                         label="State *"
                         variant="outlined"
                         error={!!errors.state}
-                        helperText={errors.state?.message || (!country ? "Please select a country first" : "")}
+                        helperText={
+                          errors.state?.message ||
+                          (!country ? "Please select a country first" : "")
+                        }
                         required
                       />
                     )}
@@ -811,25 +1030,45 @@ const ManualPaymentForm: React.FC = () => {
                 name="zoneId"
                 control={control}
                 render={({ field }) => (
-                  <FormControl fullWidth disabled={!state || zonesLoading} error={!!errors.zoneId}>
-                    <InputLabel>Zone / City *</InputLabel>
+                  <FormControl
+                    fullWidth
+                    disabled={!state || zonesLoading}
+                    error={!!errors.zoneId}
+                  >
+                    <InputLabel>Zone *</InputLabel>
                     <Select
                       {...field}
-                      label="Zone / City *"
+                      label="Zone *"
                       onChange={(e) => {
                         const selectedZoneId = e.target.value;
                         field.onChange(selectedZoneId);
-                        // Auto-set city based on selected zone name
-                        const selectedZone = zones.find(z => z._id === selectedZoneId);
+                        // Populate cities from the selected zone
+                        const selectedZone = zones.find(
+                          (z) => z._id === selectedZoneId
+                        );
                         if (selectedZone) {
-                          setValue("city", selectedZone.zoneName);
+                          // Set the cities available in this zone
+                          const zoneCities = selectedZone.cities || [];
+                          setCitiesInZone(zoneCities);
+
+                          // If only one city, auto-set it. If multiple, let user choose
+                          if (zoneCities.length === 1) {
+                            setValue("city", zoneCities[0]);
+                          } else if (zoneCities.length === 0) {
+                            // Fallback: use zone name as city if no cities array
+                            setValue("city", selectedZone.zoneName);
+                          } else {
+                            // Multiple cities - reset and let user choose
+                            setValue("city", "");
+                          }
                         } else {
+                          setCitiesInZone([]);
                           setValue("city", "");
                         }
                       }}
                     >
                       <MenuItem value="">
-                        <em>Select a Zone / City</em>
+                        <em>Select a Zone</em>
                       </MenuItem>
                       {zones.map((zone) => (
                         <MenuItem key={zone._id} value={zone._id}>
@@ -837,12 +1076,54 @@ const ManualPaymentForm: React.FC = () => {
                         </MenuItem>
                       ))}
                     </Select>
-                    {zonesLoading && <Typography variant="caption">Loading zones...</Typography>}
-                    {errors.zoneId && <Typography variant="caption" color="error">{errors.zoneId.message}</Typography>}
+                    {zonesLoading && (
+                      <Typography variant="caption">
+                        Loading zones...
+                      </Typography>
+                    )}
+                    {errors.zoneId && (
+                      <Typography variant="caption" color="error">
+                        {errors.zoneId.message}
+                      </Typography>
+                    )}
                   </FormControl>
                 )}
               />
             </Grid>
+
+            {/* City - Only show if zone has multiple cities */}
+            {citiesInZone.length > 1 && (
+              <Grid item xs={12} sm={4}>
+                <Controller
+                  name="city"
+                  control={control}
+                  render={({ field }) => (
+                    <FormControl fullWidth error={!!errors.city}>
+                      <InputLabel>City *</InputLabel>
+                      <Select
+                        {...field}
+                        label="City *"
+                        onChange={(e) => field.onChange(e.target.value)}
+                      >
+                        <MenuItem value="">
+                          <em>Select a City</em>
+                        </MenuItem>
+                        {citiesInZone.map((city) => (
+                          <MenuItem key={city} value={city}>
+                            {city}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                      {errors.city && (
+                        <Typography variant="caption" color="error">
+                          {errors.city.message}
+                        </Typography>
+                      )}
+                    </FormControl>
+                  )}
+                />
+              </Grid>
+            )}
 
             {/* Area - All Memberships */}
             <Grid item xs={12} sm={4}>
@@ -850,7 +1131,11 @@ const ManualPaymentForm: React.FC = () => {
                 name="areaId"
                 control={control}
                 render={({ field }) => (
-                  <FormControl fullWidth disabled={!zoneId || areasLoading} error={!!errors.areaId}>
+                  <FormControl
+                    fullWidth
+                    disabled={!zoneId || areasLoading}
+                    error={!!errors.areaId}
+                  >
                     <InputLabel>Area *</InputLabel>
                     <Select
                       {...field}
@@ -866,50 +1151,71 @@ const ManualPaymentForm: React.FC = () => {
                         </MenuItem>
                       ))}
                     </Select>
-                    {areasLoading && <Typography variant="caption">Loading areas...</Typography>}
-                    {errors.areaId && <Typography variant="caption" color="error">{errors.areaId.message}</Typography>}
+                    {areasLoading && (
+                      <Typography variant="caption">
+                        Loading areas...
+                      </Typography>
+                    )}
+                    {errors.areaId && (
+                      <Typography variant="caption" color="error">
+                        {errors.areaId.message}
+                      </Typography>
+                    )}
                   </FormControl>
                 )}
               />
             </Grid>
 
             {/* DCP Selection - Only for Digital Memberships */}
-            {["Digital Membership", "Digital Membership Trial"].includes(membershipType) && areaId && (
-              <Grid item xs={12} sm={4}>
-                <Controller
-                  name="dcpId"
-                  control={control}
-                  render={({ field }) => (
-                    <FormControl fullWidth disabled={!areaId || dcpsLoading} error={!!errors.dcpId}>
-                      <InputLabel>Assign to DCP (Optional)</InputLabel>
-                      <Select
-                        {...field}
-                        label="Assign to DCP (Optional)"
-                        onChange={(e) => field.onChange(e.target.value)}
+            {["Digital Membership", "Digital Membership Trial"].includes(
+              membershipType
+            ) &&
+              areaId && (
+                <Grid item xs={12} sm={4}>
+                  <Controller
+                    name="dcpId"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControl
+                        fullWidth
+                        disabled={!areaId || dcpsLoading}
+                        error={!!errors.dcpId}
                       >
-                        <MenuItem value="">
-                          <em>No DCP Assignment</em>
-                        </MenuItem>
-                        {dcps.map((dcp: any) => (
-                          <MenuItem key={dcp._id} value={dcp._id}>
-                            {dcp.fname} {dcp.lname}
+                        <InputLabel>Assign to DCP (Optional)</InputLabel>
+                        <Select
+                          {...field}
+                          label="Assign to DCP (Optional)"
+                          onChange={(e) => field.onChange(e.target.value)}
+                        >
+                          <MenuItem value="">
+                            <em>No DCP Assignment</em>
                           </MenuItem>
-                        ))}
-                      </Select>
-                      {dcpsLoading && <Typography variant="caption">Loading DCPs...</Typography>}
-                      {dcps.length === 0 && !dcpsLoading && (
-                        <Typography variant="caption" color="textSecondary">
-                          No DCPs assigned to this area
-                        </Typography>
-                      )}
-                      {errors.dcpId && <Typography variant="caption" color="error">{errors.dcpId.message}</Typography>}
-                    </FormControl>
-                  )}
-                />
-              </Grid>
-            )}
-
-
+                          {dcps.map((dcp: any) => (
+                            <MenuItem key={dcp._id} value={dcp._id}>
+                              {dcp.fname} {dcp.lname}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        {dcpsLoading && (
+                          <Typography variant="caption">
+                            Loading DCPs...
+                          </Typography>
+                        )}
+                        {dcps.length === 0 && !dcpsLoading && (
+                          <Typography variant="caption" color="textSecondary">
+                            No DCPs assigned to this area
+                          </Typography>
+                        )}
+                        {errors.dcpId && (
+                          <Typography variant="caption" color="error">
+                            {errors.dcpId.message}
+                          </Typography>
+                        )}
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
+              )}
 
             {/* Business Details */}
             <Grid item xs={12}>
@@ -1016,11 +1322,14 @@ const ManualPaymentForm: React.FC = () => {
                       <MenuItem value="">
                         <em>Select a fee type</em>
                       </MenuItem>
-                      {feeTypesMap[membershipType as MembershipType]?.map((type: string) => (
-                        <MenuItem key={type} value={type}>
-                          {type.charAt(0).toUpperCase() + type.slice(1).replace("_", " ")}
-                        </MenuItem>
-                      ))}
+                      {feeTypesMap[membershipType as MembershipType]?.map(
+                        (type: string) => (
+                          <MenuItem key={type} value={type}>
+                            {type.charAt(0).toUpperCase() +
+                              type.slice(1).replace("_", " ")}
+                          </MenuItem>
+                        )
+                      )}
                     </Select>
                     {errors.feeType && (
                       <Typography color="error" variant="caption">
@@ -1036,108 +1345,111 @@ const ManualPaymentForm: React.FC = () => {
                 )}
               />
             </Grid>
-            {
-              membershipType !== "Digital Membership Trial" && (
-                <>
+            {membershipType !== "Digital Membership Trial" && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="amount"
+                    control={control}
+                    rules={{
+                      required: "Amount is required",
+                      min: {
+                        value: 0,
+                        message: "Amount must be greater than or equal to 0",
+                      },
+                    }}
+                    render={({ field }) => (
+                      <TextField
+                        {...field}
+                        label="Amount *"
+                        type="number"
+                        variant="outlined"
+                        fullWidth
+                        error={!!errors.amount}
+                        helperText={errors.amount?.message}
+                        InputProps={{
+                          startAdornment: (
+                            <Typography sx={{ mr: 1 }}>₹</Typography>
+                          ),
+                        }}
+                      />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Controller
+                    name="paymentMethod"
+                    control={control}
+                    rules={{ required: "Payment Method is required" }}
+                    render={({ field }) => (
+                      <FormControl fullWidth error={!!errors.paymentMethod}>
+                        <InputLabel>Payment Method *</InputLabel>
+                        <Select
+                          {...field}
+                          label="Payment Method *"
+                          required
+                          onChange={(e) => {
+                            field.onChange(e.target.value);
+                            setValue("cashId", "");
+                            setValue("checkId", "");
+                          }}
+                        >
+                          <MenuItem value="">
+                            <em>Select a payment method</em>
+                          </MenuItem>
+                          {paymentMethods.map((method) => (
+                            <MenuItem key={method} value={method}>
+                              {method.charAt(0).toUpperCase() + method.slice(1)}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        {errors.paymentMethod && (
+                          <Typography color="error" variant="caption">
+                            {errors.paymentMethod.message}
+                          </Typography>
+                        )}
+                      </FormControl>
+                    )}
+                  />
+                </Grid>
+                {paymentMethod === "cash" && (
                   <Grid item xs={12} sm={6}>
                     <Controller
-                      name="amount"
+                      name="cashId"
                       control={control}
-                      rules={{
-                        required: "Amount is required",
-                        min: { value: 0, message: "Amount must be greater than or equal to 0" },
-                      }}
                       render={({ field }) => (
                         <TextField
                           {...field}
-                          label="Amount *"
-                          type="number"
+                          label="Cash ID (Optional)"
                           variant="outlined"
                           fullWidth
-                          error={!!errors.amount}
-                          helperText={errors.amount?.message}
-                          InputProps={{
-                            startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography>,
-                          }}
+                          error={!!errors.cashId}
+                          helperText={errors.cashId?.message}
                         />
                       )}
                     />
                   </Grid>
+                )}
+                {paymentMethod === "check" && (
                   <Grid item xs={12} sm={6}>
                     <Controller
-                      name="paymentMethod"
+                      name="checkId"
                       control={control}
-                      rules={{ required: "Payment Method is required" }}
                       render={({ field }) => (
-                        <FormControl fullWidth error={!!errors.paymentMethod}>
-                          <InputLabel>Payment Method *</InputLabel>
-                          <Select
-                            {...field}
-                            label="Payment Method *"
-                            required
-                            onChange={(e) => {
-                              field.onChange(e.target.value);
-                              setValue("cashId", "");
-                              setValue("checkId", "");
-                            }}
-                          >
-                            <MenuItem value="">
-                              <em>Select a payment method</em>
-                            </MenuItem>
-                            {paymentMethods.map((method) => (
-                              <MenuItem key={method} value={method}>
-                                {method.charAt(0).toUpperCase() + method.slice(1)}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                          {errors.paymentMethod && (
-                            <Typography color="error" variant="caption">
-                              {errors.paymentMethod.message}
-                            </Typography>
-                          )}
-                        </FormControl>
+                        <TextField
+                          {...field}
+                          label="Check ID (Optional)"
+                          variant="outlined"
+                          fullWidth
+                          error={!!errors.checkId}
+                          helperText={errors.checkId?.message}
+                        />
                       )}
                     />
                   </Grid>
-                  {paymentMethod === "cash" && (
-                    <Grid item xs={12} sm={6}>
-                      <Controller
-                        name="cashId"
-                        control={control}
-                        render={({ field }) => (
-                          <TextField
-                            {...field}
-                            label="Cash ID (Optional)"
-                            variant="outlined"
-                            fullWidth
-                            error={!!errors.cashId}
-                            helperText={errors.cashId?.message}
-                          />
-                        )}
-                      />
-                    </Grid>
-                  )}
-                  {paymentMethod === "check" && (
-                    <Grid item xs={12} sm={6}>
-                      <Controller
-                        name="checkId"
-                        control={control}
-                        render={({ field }) => (
-                          <TextField
-                            {...field}
-                            label="Check ID (Optional)"
-                            variant="outlined"
-                            fullWidth
-                            error={!!errors.checkId}
-                            helperText={errors.checkId?.message}
-                          />
-                        )}
-                      />
-                    </Grid>
-                  )}
-                </>
-              )
-            }
+                )}
+              </>
+            )}
             <Grid item xs={12}>
               <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
                 <Button
@@ -1162,8 +1474,8 @@ const ManualPaymentForm: React.FC = () => {
                 </Button>
               </Box>
             </Grid>
-          </Grid >
-        </form >
+          </Grid>
+        </form>
         {response && (
           <Card sx={{ mt: 3 }}>
             <CardContent>
@@ -1177,19 +1489,27 @@ const ManualPaymentForm: React.FC = () => {
                       <strong>User ID:</strong> {response.data.user._id}
                     </Typography>
                     <Typography>
-                      <strong>Name:</strong> {response.data.user.fname} {response.data.user.lname || ""}
+                      <strong>Name:</strong> {response.data.user.fname}{" "}
+                      {response.data.user.lname || ""}
                     </Typography>
                     <Typography>
                       <strong>Email:</strong> {response.data.user.email}
                     </Typography>
                     <Typography>
-                      <strong>Membership:</strong> {response.data.user.membershipType}
+                      <strong>Membership:</strong>{" "}
+                      {response.data.user.membershipType}
                     </Typography>
                     <Typography>
-                      <strong>Status:</strong> {response.data.user.isActive ? "Active" : "Inactive"}
+                      <strong>Status:</strong>{" "}
+                      {response.data.user.isActive ? "Active" : "Inactive"}
                     </Typography>
                     <Typography>
-                      <strong>Renewal Date:</strong> {response.data.user.renewalDate ? new Date(response.data.user.renewalDate).toLocaleDateString() : "N/A"}
+                      <strong>Renewal Date:</strong>{" "}
+                      {response.data.user.renewalDate
+                        ? new Date(
+                            response.data.user.renewalDate
+                          ).toLocaleDateString()
+                        : "N/A"}
                     </Typography>
                   </Box>
                 </Grid>
@@ -1199,79 +1519,99 @@ const ManualPaymentForm: React.FC = () => {
                   </Typography>
                   <Box sx={{ pl: 2 }}>
                     <Typography>
-                      <strong>Completed:</strong> {response.data.paymentStatus.completed}
+                      <strong>Completed:</strong>{" "}
+                      {response.data.paymentStatus.completed}
                     </Typography>
                     <Typography>
-                      <strong>Pending:</strong> {response.data.paymentStatus.pending}
+                      <strong>Pending:</strong>{" "}
+                      {response.data.paymentStatus.pending}
                     </Typography>
                     <Typography>
-                      <strong>Fully Paid:</strong> {response.data.paymentStatus.isFullyPaid ? "Yes" : "No"}
+                      <strong>Fully Paid:</strong>{" "}
+                      {response.data.paymentStatus.isFullyPaid ? "Yes" : "No"}
                     </Typography>
                     {response.data.paymentStatus.completedFees?.length > 0 && (
                       <Box sx={{ mt: 1 }}>
                         <Typography variant="body2" fontWeight="bold">
                           Completed Payments:
                         </Typography>
-                        {response.data.paymentStatus.completedFees.map((fee, index) => (
-                          <Box key={index} sx={{ pl: 1 }}>
-                            <Typography variant="body2">
-                              • {fee.feeType}: ₹{fee.amount} ({fee.status})
-                            </Typography>
-                            {fee.paymentMethod === "cash" && fee.cashId && (
-                              <Typography variant="body2" sx={{ pl: 2 }}>
-                                <strong>Cash ID:</strong> {fee.cashId}
+                        {response.data.paymentStatus.completedFees.map(
+                          (fee, index) => (
+                            <Box key={index} sx={{ pl: 1 }}>
+                              <Typography variant="body2">
+                                • {fee.feeType}: ₹{fee.amount} ({fee.status})
                               </Typography>
-                            )}
-                            {fee.paymentMethod === "check" && fee.checkId && (
-                              <Typography variant="body2" sx={{ pl: 2 }}>
-                                <strong>Check ID:</strong> {fee.checkId}
-                              </Typography>
-                            )}
-                          </Box>
-                        ))}
+                              {fee.paymentMethod === "cash" && fee.cashId && (
+                                <Typography variant="body2" sx={{ pl: 2 }}>
+                                  <strong>Cash ID:</strong> {fee.cashId}
+                                </Typography>
+                              )}
+                              {fee.paymentMethod === "check" && fee.checkId && (
+                                <Typography variant="body2" sx={{ pl: 2 }}>
+                                  <strong>Check ID:</strong> {fee.checkId}
+                                </Typography>
+                              )}
+                            </Box>
+                          )
+                        )}
                       </Box>
                     )}
-                    {response.data.paymentStatus.completed > 0 && (!response.data.paymentStatus.completedFees || response.data.paymentStatus.completedFees.length === 0) && (
-                      <Box sx={{ mt: 1 }}>
-                        <Typography variant="body2" fontWeight="bold">
-                          Latest Completed Payment:
-                        </Typography>
-                        {(response.data.user.paymentVerification ?? []).filter((p: any) => p.status === "completed").slice(-1).map((p: any, index: number) => (
-                          <Box key={index} sx={{ pl: 1 }}>
-                            <Typography variant="body2">
-                              • {p.feeType}: ₹{p.amount} (Completed)
-                            </Typography>
-                            {p.paymentMethod === "cash" && p.cashId && (
-                              <Typography variant="body2" sx={{ pl: 2 }}>
-                                <strong>Cash ID:</strong> {p.cashId}
-                              </Typography>
-                            )}
-                            {p.paymentMethod === "check" && p.checkId && (
-                              <Typography variant="body2" sx={{ pl: 2 }}>
-                                <strong>Check ID:</strong> {p.checkId}
-                              </Typography>
-                            )}
-                          </Box>
-                        ))}
-                      </Box>
-                    )}
+                    {response.data.paymentStatus.completed > 0 &&
+                      (!response.data.paymentStatus.completedFees ||
+                        response.data.paymentStatus.completedFees.length ===
+                          0) && (
+                        <Box sx={{ mt: 1 }}>
+                          <Typography variant="body2" fontWeight="bold">
+                            Latest Completed Payment:
+                          </Typography>
+                          {(response.data.user.paymentVerification ?? [])
+                            .filter((p: any) => p.status === "completed")
+                            .slice(-1)
+                            .map((p: any, index: number) => (
+                              <Box key={index} sx={{ pl: 1 }}>
+                                <Typography variant="body2">
+                                  • {p.feeType}: ₹{p.amount} (Completed)
+                                </Typography>
+                                {p.paymentMethod === "cash" && p.cashId && (
+                                  <Typography variant="body2" sx={{ pl: 2 }}>
+                                    <strong>Cash ID:</strong> {p.cashId}
+                                  </Typography>
+                                )}
+                                {p.paymentMethod === "check" && p.checkId && (
+                                  <Typography variant="body2" sx={{ pl: 2 }}>
+                                    <strong>Check ID:</strong> {p.checkId}
+                                  </Typography>
+                                )}
+                              </Box>
+                            ))}
+                        </Box>
+                      )}
                     {response.data.paymentStatus.pendingFees.length > 0 && (
                       <Box sx={{ mt: 1 }}>
                         <Typography variant="body2" fontWeight="bold">
                           Pending Fees:
                         </Typography>
-                        {response.data.paymentStatus.pendingFees.map((fee, index) => (
-                          <Typography key={index} variant="body2" sx={{ pl: 1 }}>
-                            • {fee.feeType}: ₹{fee.amount} ({fee.status})
-                          </Typography>
-                        ))}
+                        {response.data.paymentStatus.pendingFees.map(
+                          (fee, index) => (
+                            <Typography
+                              key={index}
+                              variant="body2"
+                              sx={{ pl: 1 }}
+                            >
+                              • {fee.feeType}: ₹{fee.amount} ({fee.status})
+                            </Typography>
+                          )
+                        )}
                       </Box>
                     )}
                   </Box>
                 </Grid>
                 <Grid item xs={12}>
                   <Typography variant="body2" sx={{ mt: 2 }}>
-                    <strong>Next Step:</strong> {response.data.nextStep === "login" ? "User can now login" : "Complete remaining payments"}
+                    <strong>Next Step:</strong>{" "}
+                    {response.data.nextStep === "login"
+                      ? "User can now login"
+                      : "Complete remaining payments"}
                   </Typography>
                 </Grid>
               </Grid>
@@ -1289,8 +1629,8 @@ const ManualPaymentForm: React.FC = () => {
           draggable
           pauseOnHover
         />
-      </Paper >
-    </Box >
+      </Paper>
+    </Box>
   );
 };
 

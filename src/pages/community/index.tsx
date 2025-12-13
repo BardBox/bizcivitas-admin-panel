@@ -27,6 +27,14 @@ import {
   DialogActions,
   Checkbox,
   ListItemText,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  Divider,
 } from "@mui/material";
 import { Add, Edit, Delete, Check } from "@mui/icons-material";
 import { Country, State, City } from "country-state-city";
@@ -54,6 +62,12 @@ interface CoreGroup {
   countries: string[];
   states: string[];
   cities: string[];
+  cgc?: { _id: string; fname: string; lname: string }[] | null; // ✅ Multiple CGCs (Core Group Captains)
+  cgcPositions?: {
+    president?: string;
+    networkingDirector?: string;
+    membershipDirector?: string;
+  };
 }
 
 interface Community {
@@ -66,6 +80,12 @@ interface Community {
   states: string[];
   cities: string[];
   communityType: string | string[];
+  cgc?: { _id: string; fname: string; lname: string }[] | null; // ✅ Multiple CGCs for community
+  cgcPositions?: {
+    president?: string;
+    networkingDirector?: string;
+    membershipDirector?: string;
+  };
 }
 
 interface Member {
@@ -73,6 +93,17 @@ interface Member {
   fname: string;
   lname: string;
 }
+
+interface CGCPositionAssignment {
+  memberId: string;
+  position: string;
+}
+
+const CGC_POSITIONS = [
+  { value: "president", label: "President" },
+  { value: "networkingDirector", label: "Networking Director" },
+  { value: "membershipDirector", label: "Membership Director" },
+];
 
 export const communityTypes = ["Flagship Membership", "Industria Membership"];
 
@@ -103,7 +134,8 @@ const CommunityPage: React.FC = () => {
     countries: string[];
     states: string[];
     cities: string[];
-  }>({ name: "", coreMemberIds: [], countries: [], states: [], cities: [] });
+    cgcIds: string[]; // ✅ Multiple CGCs assignment
+  }>({ name: "", coreMemberIds: [], countries: [], states: [], cities: [], cgcIds: [] });
   const [communityForm, setCommunityForm] = useState<{
     communityName: string;
     coreGroupId: string;
@@ -113,6 +145,7 @@ const CommunityPage: React.FC = () => {
     cities: string[];
     communityType: string[];
     image: File | null;
+    cgcIds: string[]; // ✅ Multiple CGCs assignment
   }>({
     communityName: "",
     coreGroupId: "",
@@ -122,6 +155,7 @@ const CommunityPage: React.FC = () => {
     cities: [],
     communityType: [],
     image: null,
+    cgcIds: [],
   });
   const [previewImage, setPreviewImage] = useState("");
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -131,6 +165,8 @@ const CommunityPage: React.FC = () => {
   const [selectedState, setSelectedState] = useState("");
   const [selectedCommunityCountry, setSelectedCommunityCountry] = useState("");
   const [selectedCommunityState, setSelectedCommunityState] = useState("");
+  const [coreGroupCGCAssignments, setCoreGroupCGCAssignments] = useState<CGCPositionAssignment[]>([{ memberId: "", position: "" }]);
+  const [communityCGCAssignments, setCommunityCGCAssignments] = useState<CGCPositionAssignment[]>([{ memberId: "", position: "" }]);
 
   useEffect(() => {
     fetchCoreGroups();
@@ -138,37 +174,43 @@ const CommunityPage: React.FC = () => {
     fetchCoreMembers();
   }, []);
 
-  const getLocationFieldVisibility = (countries: string[]): LocationFieldVisibility => {
+  const getLocationFieldVisibility = (countries: string[], stateValue: string): LocationFieldVisibility => {
     return {
       showCountry: true,
       showState: countries.length > 0,
-      showCity: countries.length > 0 && selectedState !== "",
+      showCity: countries.length > 0 && stateValue !== "",
       showCommunity: false,
       disableState: countries.length === 0,
-      disableCity: countries.length === 0 || selectedState === "",
+      disableCity: countries.length === 0 || stateValue === "",
       disableCommunity: true,
       showStateField: countries.length > 0,
-      showCityField: countries.length > 0 && selectedState !== "",
+      showCityField: countries.length > 0 && stateValue !== "",
     };
   };
 
   const fetchCoreGroups = async () => {
     try {
+      console.log("🔵 [FETCH CORE GROUPS] Calling API endpoint: GET /coregroup");
       const response: AxiosResponse<{ data: CoreGroup[] }> = await api.get(
         "/coregroup"
       );
+      console.log("✅ [FETCH CORE GROUPS] Response received:", response.data);
+      console.log("📊 [FETCH CORE GROUPS] Total core groups:", response.data.data.length);
       setCoreGroups(response.data.data);
     } catch (error) {
-      console.error("Error fetching core groups:", error);
+      console.error("❌ [FETCH CORE GROUPS] Error fetching core groups:", error);
       toast.error("Failed to fetch core groups.");
     }
   };
 
   const fetchCommunities = async () => {
     try {
+      console.log("🟢 [FETCH COMMUNITIES] Calling API endpoint: GET /community");
       const response: AxiosResponse<{ data: Community[] }> = await api.get(
         "/community"
       );
+      console.log("✅ [FETCH COMMUNITIES] Response received:", response.data);
+      console.log("📊 [FETCH COMMUNITIES] Total communities:", response.data.data.length);
       const normalizedCommunities = response.data.data.map((community) => ({
         ...community,
         communityType: Array.isArray(community.communityType)
@@ -179,19 +221,22 @@ const CommunityPage: React.FC = () => {
       }));
       setCommunities(normalizedCommunities);
     } catch (error) {
-      console.error("Error fetching communities:", error);
+      console.error("❌ [FETCH COMMUNITIES] Error fetching communities:", error);
       toast.error("Failed to fetch communities.");
     }
   };
 
   const fetchCoreMembers = async () => {
     try {
+      console.log("🟡 [FETCH CORE MEMBERS] Calling API endpoint: GET /core-members");
       const response: AxiosResponse<{ data: Member[] }> = await api.get(
         "/core-members"
       );
+      console.log("✅ [FETCH CORE MEMBERS] Response received:", response.data);
+      console.log("📊 [FETCH CORE MEMBERS] Total core members:", response.data.data.length);
       setCoreMembers(response.data.data);
     } catch (error) {
-      console.error("Error fetching core members:", error);
+      console.error("❌ [FETCH CORE MEMBERS] Error fetching core members:", error);
       toast.error("Failed to fetch core members.");
     }
   };
@@ -210,6 +255,90 @@ const CommunityPage: React.FC = () => {
       console.error("Error fetching core members by group:", error);
       toast.error("Failed to fetch core members for the selected group.");
       setFilteredCoreMembers([]);
+    }
+  };
+
+  const fetchCoreGroupCGCPositions = async (groupId: string, coreMemberIds: string[]) => {
+    try {
+      const response = await api.get(`/coregroup/${groupId}/cgc-positions`);
+      const existingPositions = response.data.data || {};
+
+      const loadedAssignments: CGCPositionAssignment[] = [];
+      if (existingPositions.president) {
+        const presidentId = existingPositions.president._id || existingPositions.president;
+        // Only add if this user is in the current core members list
+        if (coreMemberIds.includes(presidentId)) {
+          loadedAssignments.push({
+            memberId: presidentId,
+            position: "president",
+          });
+        }
+      }
+      if (existingPositions.networkingDirector) {
+        const networkingDirectorId = existingPositions.networkingDirector._id || existingPositions.networkingDirector;
+        if (coreMemberIds.includes(networkingDirectorId)) {
+          loadedAssignments.push({
+            memberId: networkingDirectorId,
+            position: "networkingDirector",
+          });
+        }
+      }
+      if (existingPositions.membershipDirector) {
+        const membershipDirectorId = existingPositions.membershipDirector._id || existingPositions.membershipDirector;
+        if (coreMemberIds.includes(membershipDirectorId)) {
+          loadedAssignments.push({
+            memberId: membershipDirectorId,
+            position: "membershipDirector",
+          });
+        }
+      }
+
+      setCoreGroupCGCAssignments(loadedAssignments.length > 0 ? loadedAssignments : [{ memberId: "", position: "" }]);
+    } catch (error) {
+      console.error("Error fetching CGC positions:", error);
+      setCoreGroupCGCAssignments([{ memberId: "", position: "" }]);
+    }
+  };
+
+  const fetchCommunityCGCPositions = async (communityId: string, coreMemberIds: string[]) => {
+    try {
+      const response = await api.get(`/community/${communityId}/cgc-positions`);
+      const existingPositions = response.data.data || {};
+
+      const loadedAssignments: CGCPositionAssignment[] = [];
+      if (existingPositions.president) {
+        const presidentId = existingPositions.president._id || existingPositions.president;
+        // Only add if this user is in the current core members list
+        if (coreMemberIds.includes(presidentId)) {
+          loadedAssignments.push({
+            memberId: presidentId,
+            position: "president",
+          });
+        }
+      }
+      if (existingPositions.networkingDirector) {
+        const networkingDirectorId = existingPositions.networkingDirector._id || existingPositions.networkingDirector;
+        if (coreMemberIds.includes(networkingDirectorId)) {
+          loadedAssignments.push({
+            memberId: networkingDirectorId,
+            position: "networkingDirector",
+          });
+        }
+      }
+      if (existingPositions.membershipDirector) {
+        const membershipDirectorId = existingPositions.membershipDirector._id || existingPositions.membershipDirector;
+        if (coreMemberIds.includes(membershipDirectorId)) {
+          loadedAssignments.push({
+            memberId: membershipDirectorId,
+            position: "membershipDirector",
+          });
+        }
+      }
+
+      setCommunityCGCAssignments(loadedAssignments.length > 0 ? loadedAssignments : [{ memberId: "", position: "" }]);
+    } catch (error) {
+      console.error("Error fetching community CGC positions:", error);
+      setCommunityCGCAssignments([{ memberId: "", position: "" }]);
     }
   };
 
@@ -242,7 +371,9 @@ const CommunityPage: React.FC = () => {
         countries: [],
         states: [],
         cities: [],
+        cgcIds: [], // ✅ Reset CGCs
       });
+      setCoreGroupCGCAssignments([{ memberId: "", position: "" }]);
       setSelectedCountry("");
       setSelectedState("");
     } else if (mode === "editCoreGroup" && id) {
@@ -254,9 +385,13 @@ const CommunityPage: React.FC = () => {
           countries: coreGroup.countries,
           states: coreGroup.states,
           cities: coreGroup.cities,
+          cgcIds: coreGroup.cgc?.map(c => c._id) || [], // ✅ Set existing CGCs
         });
         setSelectedCountry(coreGroup.countries[0] || "");
         setSelectedState(coreGroup.states[0] || "");
+        // Fetch existing CGC positions for this core group
+        const coreMemberIds = coreGroup.coreMembers.map((m) => m._id);
+        fetchCoreGroupCGCPositions(id, coreMemberIds);
       }
     } else if (mode === "createCommunity") {
       setCommunityForm({
@@ -268,17 +403,40 @@ const CommunityPage: React.FC = () => {
         cities: [],
         communityType: [],
         image: null,
+        cgcIds: [], // ✅ Reset CGCs
       });
+      setCommunityCGCAssignments([{ memberId: "", position: "" }]);
       setFilteredCoreMembers([]);
       setSelectedCommunityCountry("");
       setSelectedCommunityState("");
     } else if (mode === "editCommunity" && id) {
       const community = communities.find((c) => c._id === id);
+      console.log("🔵 [EDIT COMMUNITY] Community data:", community);
       if (community) {
+        // Find the core group to get its members
+        // Note: backend returns coreGroup with 'id' field, not '_id'
+        const coreGroupId = (community.coreGroup as any)?.id || community.coreGroup?._id;
+        const coreGroup = coreGroups.find(g => g._id === coreGroupId);
+        console.log("🔵 [EDIT COMMUNITY] Core Group:", coreGroup);
+        console.log("🔵 [EDIT COMMUNITY] Core Group ID from community:", coreGroupId);
+        console.log("🔵 [EDIT COMMUNITY] Available Core Groups:", coreGroups);
+
+        // Initialize filteredCoreMembers with the core group's members
+        if (coreGroup) {
+          console.log("🔵 [EDIT COMMUNITY] Setting filtered core members:", coreGroup.coreMembers);
+          setFilteredCoreMembers(coreGroup.coreMembers);
+        } else {
+          console.warn("⚠️ [EDIT COMMUNITY] Core group not found in coreGroups array");
+        }
+
+        const memberIds = community.coreMembers.map((m) => m.id);
+        console.log("🔵 [EDIT COMMUNITY] Core Member IDs:", memberIds);
+        console.log("🔵 [EDIT COMMUNITY] Core Members:", community.coreMembers);
+
         setCommunityForm({
           communityName: community.communityName,
-          coreGroupId: community.coreGroup?._id || "",
-          coreMemberIds: community.coreMembers.map((m) => m.id),
+          coreGroupId: coreGroupId || "",
+          coreMemberIds: memberIds,
           countries: community.countries,
           states: community.states,
           cities: community.cities,
@@ -288,15 +446,15 @@ const CommunityPage: React.FC = () => {
             ? [community.communityType]
             : [],
           image: null,
+          cgcIds: community.cgc?.map(c => c._id) || [], // ✅ Set existing CGCs
         });
         setPreviewImage(
           `${import.meta.env.VITE_API_BASE_URL}/image/${community.image}`
         );
         setSelectedCommunityCountry(community.countries[0] || "");
         setSelectedCommunityState(community.states[0] || "");
-        if (community.coreGroup?._id) {
-          fetchCoreMembersByGroup(community.coreGroup._id);
-        }
+        // Fetch existing CGC positions for this community
+        fetchCommunityCGCPositions(id, memberIds);
       }
     }
   };
@@ -316,6 +474,22 @@ const CommunityPage: React.FC = () => {
     if (!locationValidation.isValid) {
       Object.assign(newErrors, locationValidation.errors);
     }
+
+    // Validate CGC position assignments
+    const validAssignments = coreGroupCGCAssignments.filter(
+      (a) => a.memberId !== "" && a.position !== ""
+    );
+    const memberIds = validAssignments.map((a) => a.memberId);
+    const uniqueMemberIds = new Set(memberIds);
+    if (memberIds.length !== uniqueMemberIds.size) {
+      newErrors.cgcPositions = "Same member cannot be assigned to multiple positions";
+    }
+    const positions = validAssignments.map((a) => a.position);
+    const uniquePositions = new Set(positions);
+    if (positions.length !== uniquePositions.size) {
+      newErrors.cgcPositions = "Each position can only be assigned once";
+    }
+
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) {
       toast.error("Please fill in all required fields.");
@@ -329,11 +503,16 @@ const CommunityPage: React.FC = () => {
         countries: coreGroupForm.countries,
         states: coreGroupForm.states,
         cities: coreGroupForm.cities,
+        cgcIds: coreGroupForm.cgcIds.length > 0 ? coreGroupForm.cgcIds : undefined,
       };
+
+      let savedGroupId = dialog.coreGroupId;
+
       if (dialog.mode === "createCoreGroup") {
-        await api.post("/coregroup/", payload, {
+        const response = await api.post("/coregroup/", payload, {
           headers: { "Content-Type": "application/json" },
         });
+        savedGroupId = response.data.data.coreGroup._id;
         toast.success("Core Group created successfully.");
       } else if (dialog.mode === "editCoreGroup" && dialog.coreGroupId) {
         await api.put(`/coregroup/${dialog.coreGroupId}`, payload, {
@@ -341,6 +520,22 @@ const CommunityPage: React.FC = () => {
         });
         toast.success("Core Group updated successfully.");
       }
+
+      // Save CGC positions if any valid assignments
+      if (validAssignments.length > 0 && savedGroupId) {
+        const cgcPositions: any = {
+          president: "",
+          networkingDirector: "",
+          membershipDirector: "",
+        };
+        validAssignments.forEach((assignment) => {
+          cgcPositions[assignment.position] = assignment.memberId;
+        });
+        await api.post(`/coregroup/${savedGroupId}/assign-cgc-positions`, {
+          cgcPositions,
+        });
+      }
+
       setDialog({ open: false, mode: null });
       fetchCoreGroups();
     } catch (err) {
@@ -396,6 +591,22 @@ const CommunityPage: React.FC = () => {
       newErrors.communityType = "At least one community type is required";
     if (dialog.mode === "createCommunity" && !communityForm.image)
       newErrors.image = "Image is required";
+
+    // Validate CGC position assignments
+    const validAssignments = communityCGCAssignments.filter(
+      (a) => a.memberId !== "" && a.position !== ""
+    );
+    const memberIds = validAssignments.map((a) => a.memberId);
+    const uniqueMemberIds = new Set(memberIds);
+    if (memberIds.length !== uniqueMemberIds.size) {
+      newErrors.cgcPositions = "Same member cannot be assigned to multiple positions";
+    }
+    const positions = validAssignments.map((a) => a.position);
+    const uniquePositions = new Set(positions);
+    if (positions.length !== uniquePositions.size) {
+      newErrors.cgcPositions = "Each position can only be assigned once";
+    }
+
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) {
       toast.error("Please fill in all required fields.");
@@ -421,10 +632,18 @@ const CommunityPage: React.FC = () => {
         formData.append("coreMemberIds[]", id)
       );
       if (communityForm.image) formData.append("image", communityForm.image);
+      // ✅ Include multiple CGCs
+      communityForm.cgcIds.forEach((cgcId) =>
+        formData.append("cgcIds[]", cgcId)
+      );
+
+      let savedCommunityId = dialog.communityId;
+
       if (dialog.mode === "createCommunity") {
-        await api.post("/community", formData, {
+        const response = await api.post("/community", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
+        savedCommunityId = response.data.data._id;
         toast.success("Community created successfully.");
       } else if (dialog.mode === "editCommunity" && dialog.communityId) {
         await api.put(`/community/${dialog.communityId}`, formData, {
@@ -432,6 +651,22 @@ const CommunityPage: React.FC = () => {
         });
         toast.success("Community updated successfully.");
       }
+
+      // Save CGC positions if any valid assignments
+      if (validAssignments.length > 0 && savedCommunityId) {
+        const cgcPositions: any = {
+          president: "",
+          networkingDirector: "",
+          membershipDirector: "",
+        };
+        validAssignments.forEach((assignment) => {
+          cgcPositions[assignment.position] = assignment.memberId;
+        });
+        await api.post(`/community/${savedCommunityId}/assign-cgc-positions`, {
+          cgcPositions,
+        });
+      }
+
       setDialog({ open: false, mode: null });
       fetchCommunities();
     } catch (err) {
@@ -484,9 +719,42 @@ const CommunityPage: React.FC = () => {
   }, [dialog.open, setSidebarAndHeaderVisibility]);
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, bgcolor: 'background.default', minHeight: '100vh' }}>
       <ToastContainer />
-      <Tabs value={tabValue} onChange={handleTabChange} sx={{ mb: 3 }}>
+      {/* Page Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography
+          variant="h4"
+          sx={{
+            fontWeight: 700,
+            color: 'primary.main',
+            mb: 1
+          }}
+        >
+          Community
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Manage core groups and communities, assign leaders (CGC), and organize members
+        </Typography>
+      </Box>
+
+      {/* Tabs */}
+      <Tabs
+        value={tabValue}
+        onChange={handleTabChange}
+        sx={{
+          mb: 3,
+          '& .MuiTab-root': {
+            fontSize: '1rem',
+            fontWeight: 600,
+            textTransform: 'none',
+            minWidth: 140,
+          },
+          '& .Mui-selected': {
+            color: 'primary.main',
+          },
+        }}
+      >
         <Tab label="Core Groups" />
         <Tab label="Communities" />
       </Tabs>
@@ -496,35 +764,143 @@ const CommunityPage: React.FC = () => {
             variant="contained"
             startIcon={<Add />}
             onClick={() => openDialog("createCoreGroup")}
-            sx={{ mb: 3 }}
+            sx={{
+              mb: 3,
+              px: 3,
+              py: 1.5,
+              fontSize: '1rem',
+              fontWeight: 600,
+              textTransform: 'none',
+              borderRadius: 2,
+              boxShadow: 2,
+              '&:hover': {
+                boxShadow: 4,
+              },
+            }}
           >
             Add Core Group
           </Button>
           <Grid container spacing={3}>
             {coreGroups.map((group) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={group._id}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6">{group.name}</Typography>
-                    <Typography>
-                      Countries: {group.countries.join(", ")}
+              <Grid item xs={12} sm={6} md={4} key={group._id}>
+                <Card sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxShadow: 3,
+                  '&:hover': { boxShadow: 6 },
+                  transition: 'box-shadow 0.3s',
+                  borderRadius: 2,
+                }}>
+                  <CardContent sx={{ flexGrow: 1, p: 3 }}>
+                    {/* Group Name */}
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        mb: 2,
+                        fontWeight: 600,
+                        color: 'primary.main',
+                        borderBottom: '2px solid',
+                        borderColor: 'primary.light',
+                        pb: 1
+                      }}
+                    >
+                      {group.name}
                     </Typography>
-                    <Typography>States: {group.states.join(", ")}</Typography>
-                    <Typography>Cities: {group.cities.join(", ")}</Typography>
-                    <Typography>
-                      Core Members:{" "}
-                      {group.coreMembers
-                        .map((m) => `${m.fname} ${m.lname}`)
-                        .join(", ")}
-                    </Typography>
-                    <Box sx={{ mt: 2 }}>
+
+                    {/* CGC Badge - Multiple CGCs */}
+                    {/* CGC Badge - Multiple CGCs */}
+                    {group.cgc && group.cgc.length > 0 && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography
+                          variant="subtitle1"
+                          sx={{
+                            fontWeight: 600,
+                            color: 'text.primary',
+                            mb: 1
+                          }}
+                        >
+                          Leaders ({group.cgc.length})
+                        </Typography>
+                        <TableContainer component={Paper} variant="outlined" sx={{ boxShadow: 'none', bgcolor: 'transparent' }}>
+                          <Table size="small" aria-label="leaders table">
+                            <TableHead>
+                              <TableRow sx={{ bgcolor: 'grey.50' }}>
+                                <TableCell sx={{ fontWeight: 600, py: 1 }}>Name</TableCell>
+                                <TableCell sx={{ fontWeight: 600, py: 1 }}>Position</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {group.cgc.map((cgc) => {
+                                 let position = "";
+                                 if (group.cgcPositions) {
+                                   if (group.cgcPositions.president === cgc._id) position = "President";
+                                   else if (group.cgcPositions.networkingDirector === cgc._id) position = "Networking Director";
+                                   else if (group.cgcPositions.membershipDirector === cgc._id) position = "Membership Director";
+                                 }
+                                return (
+                                  <TableRow
+                                    key={cgc._id}
+                                  >
+                                    <TableCell component="th" scope="row" sx={{ py: 1 }}>
+                                      {cgc.fname} {cgc.lname}
+                                    </TableCell>
+                                    <TableCell sx={{ py: 1, color: position ? 'primary.main' : 'text.secondary' }}>
+                                      {position || '-'}
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
+                    )}
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Location Info */}
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                        <strong>Location:</strong>
+                      </Typography>
+                      <Typography variant="body2" sx={{ pl: 0 }}>
+                        {group.cities.join(", ")}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ pl: 0 }}>
+                        {group.states.join(", ")}, {group.countries.join(", ")}
+                      </Typography>
+                    </Box>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Core Members */}
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                        <strong>Core Members ({group.coreMembers.length}):</strong>
+                      </Typography>
+                      <Typography variant="body2" sx={{ pl: 2.5 }}>
+                        {group.coreMembers
+                          .map((m) => `${m.fname} ${m.lname}`)
+                          .join(", ")}
+                      </Typography>
+                    </Box>
+
+                    {/* Action Buttons */}
+                    <Box sx={{ mt: 'auto', pt: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                       <IconButton
                         onClick={() => openDialog("editCoreGroup", group._id)}
+                        color="primary"
+                        size="small"
+                        sx={{ '&:hover': { bgcolor: 'primary.light' } }}
                       >
                         <Edit />
                       </IconButton>
                       <IconButton
                         onClick={() => openDialog("deleteCoreGroup", group._id)}
+                        color="error"
+                        size="small"
+                        sx={{ '&:hover': { bgcolor: 'error.light' } }}
                       >
                         <Delete />
                       </IconButton>
@@ -542,62 +918,186 @@ const CommunityPage: React.FC = () => {
             variant="contained"
             startIcon={<Add />}
             onClick={() => openDialog("createCommunity")}
-            sx={{ mb: 3 }}
+            sx={{
+              mb: 3,
+              px: 3,
+              py: 1.5,
+              fontSize: '1rem',
+              fontWeight: 600,
+              textTransform: 'none',
+              borderRadius: 2,
+              boxShadow: 2,
+              '&:hover': {
+                boxShadow: 4,
+              },
+            }}
           >
             Add Community
           </Button>
           <Grid container spacing={3}>
             {communities.map((community) => (
-              <Grid item xs={12} sm={6} md={4} lg={3} key={community._id}>
-                <Card>
-                  <CardContent>
-                    <Typography variant="h6">
+              <Grid item xs={12} sm={6} md={4} key={community._id}>
+                <Card sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  boxShadow: 3,
+                  '&:hover': { boxShadow: 6 },
+                  transition: 'box-shadow 0.3s',
+                  borderRadius: 2,
+                }}>
+                  {/* Community Image */}
+                  {community.image && (
+                    <Box
+                      component="img"
+                      src={`${import.meta.env.VITE_API_BASE_URL}/image/${community.image}`}
+                      alt={community.communityName}
+                      sx={{
+                        width: '100%',
+                        height: 180,
+                        objectFit: 'cover',
+                        borderTopLeftRadius: 8,
+                        borderTopRightRadius: 8,
+                      }}
+                    />
+                  )}
+                  <CardContent sx={{ flexGrow: 1, p: 3 }}>
+                    {/* Community Name */}
+                    <Typography
+                      variant="h5"
+                      sx={{
+                        mb: 2,
+                        fontWeight: 600,
+                        color: 'primary.main',
+                        borderBottom: '2px solid',
+                        borderColor: 'primary.light',
+                        pb: 1
+                      }}
+                    >
                       {community.communityName}
                     </Typography>
-                    <Typography>
-                      Core Group: {community.coreGroup?.name || "N/A"}
-                    </Typography>
-                    <Typography>
-                      Countries: {community.countries.join(", ")}
-                    </Typography>
-                    <Typography>
-                      States: {community.states.join(", ")}
-                    </Typography>
-                    <Typography>
-                      Cities: {community.cities.join(", ")}
-                    </Typography>
-                    <Typography>
-                      Community Type:{" "}
-                      {Array.isArray(community.communityType)
-                        ? community.communityType.join(", ")
-                        : community.communityType || ""}
-                    </Typography>
-                    <Typography>
-                      Core Members:{" "}
-                      {community.coreMembers
-                        .filter((m) => m && m.name)
-                        .map((m) => m.name)
-                        .join(", ") || "None"}
-                    </Typography>
-                    <Box sx={{ mt: 2 }}>
+
+                    {/* CGC Badge - Multiple CGCs */}
+                    {community.cgc && community.cgc.length > 0 && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography
+                          variant="subtitle1"
+                          sx={{
+                            fontWeight: 600,
+                            color: 'text.primary',
+                            mb: 1
+                          }}
+                        >
+                          Leaders ({community.cgc.length})
+                        </Typography>
+                        <TableContainer component={Paper} variant="outlined" sx={{ boxShadow: 'none', bgcolor: 'transparent' }}>
+                          <Table size="small" aria-label="leaders table">
+                            <TableHead>
+                              <TableRow sx={{ bgcolor: 'grey.50' }}>
+                                <TableCell sx={{ fontWeight: 600, py: 1 }}>Name</TableCell>
+                                <TableCell sx={{ fontWeight: 600, py: 1 }}>Position</TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {community.cgc.map((cgc) => {
+                                 let position = "";
+                                 if (community.cgcPositions) {
+                                   if (community.cgcPositions.president === cgc._id) position = "President";
+                                   else if (community.cgcPositions.networkingDirector === cgc._id) position = "Networking Director";
+                                   else if (community.cgcPositions.membershipDirector === cgc._id) position = "Membership Director";
+                                 }
+                                return (
+                                  <TableRow
+                                    key={cgc._id}
+                                  >
+                                    <TableCell component="th" scope="row" sx={{ py: 1 }}>
+                                      {cgc.fname} {cgc.lname}
+                                    </TableCell>
+                                    <TableCell sx={{ py: 1, color: position ? 'primary.main' : 'text.secondary' }}>
+                                      {position || '-'}
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      </Box>
+                    )}
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Core Group */}
+                    <Box sx={{ mb: 1 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Core Group:</strong> {community.coreGroup?.name || "N/A"}
+                      </Typography>
+                    </Box>
+
+                    {/* Community Type */}
+                    <Box sx={{ mb: 1 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Type:</strong>{" "}
+                        {Array.isArray(community.communityType)
+                          ? community.communityType.join(", ")
+                          : community.communityType || "N/A"}
+                      </Typography>
+                    </Box>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Location Info */}
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                        <strong>Location:</strong>
+                      </Typography>
+                      <Typography variant="body2" sx={{ pl: 0 }}>
+                        {community.cities.join(", ")}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ pl: 0 }}>
+                        {community.states.join(", ")}, {community.countries.join(", ")}
+                      </Typography>
+                    </Box>
+
+                    <Divider sx={{ my: 2 }} />
+
+                    {/* Core Members */}
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                         <strong>Core Members ({community.coreMembers.length}):</strong>
+                      </Typography>
+                      <Typography variant="body2" sx={{ pl: 2.5 }}>
+                        {community.coreMembers
+                          .filter((m) => m && m.name)
+                          .map((m) => m.name)
+                          .join(", ") || "None"}
+                      </Typography>
+                    </Box>
+
+                    {/* Action Buttons */}
+                    <Box sx={{ mt: 'auto', pt: 2, borderTop: '1px solid', borderColor: 'divider', display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
                       <IconButton
-                        onClick={() =>
-                          openDialog("editCommunity", community._id)
-                        }
+                        onClick={() => openDialog("editCommunity", community._id)}
+                        color="primary"
+                        size="small"
+                        sx={{ '&:hover': { bgcolor: 'primary.light' } }}
                       >
                         <Edit />
                       </IconButton>
                       <IconButton
-                        onClick={() =>
-                          openDialog("deleteCommunity", community._id)
-                        }
+                        onClick={() => openDialog("deleteCommunity", community._id)}
+                        color="error"
+                        size="small"
+                        sx={{ '&:hover': { bgcolor: 'error.light' } }}
                       >
                         <Delete />
                       </IconButton>
                       <IconButton
-                        onClick={() =>
-                          navigate(`/community-members/${community._id}`)
-                        }
+                        onClick={() => navigate(`/community-members/${community._id}`)}
+                        color="info"
+                        size="small"
+                        sx={{ '&:hover': { bgcolor: 'info.light' } }}
+                        title="Add Members"
                       >
                         <Add />
                       </IconButton>
@@ -697,7 +1197,7 @@ const CommunityPage: React.FC = () => {
                   }
                   disabled={
                     !selectedCountry ||
-                    !getLocationFieldVisibility(coreGroupForm.countries).showStateField
+                    !getLocationFieldVisibility(coreGroupForm.countries, selectedState).showStateField
                   }
                 >
                   {State.getStatesOfCountry(selectedCountry).map((state) => (
@@ -737,11 +1237,24 @@ const CommunityPage: React.FC = () => {
                   renderValue={(selected) => (selected as string[]).join(", ")}
                   disabled={
                     !selectedState ||
-                    !getLocationFieldVisibility(coreGroupForm.countries).showCityField
+                    !getLocationFieldVisibility(coreGroupForm.countries, selectedState).showCityField
                   }
                 >
-                  {City.getCitiesOfState(selectedCountry, selectedState)?.map(
-                    (city) => (
+                  {(() => {
+                    const cities = City.getCitiesOfState(selectedCountry, selectedState);
+                    console.log("Cities for", selectedCountry, selectedState, ":", cities);
+
+                    if (!cities || cities.length === 0) {
+                      return (
+                        <MenuItem disabled>
+                          <Typography color="textSecondary" variant="body2">
+                            No cities available in library. Use manual input below.
+                          </Typography>
+                        </MenuItem>
+                      );
+                    }
+
+                    return cities.map((city) => (
                       <MenuItem key={city.name} value={city.name}>
                         <Box
                           sx={{
@@ -756,13 +1269,36 @@ const CommunityPage: React.FC = () => {
                           )}
                         </Box>
                       </MenuItem>
-                    )
-                  )}
+                    ));
+                  })()}
                 </MuiSelect>
                 {errors.cities && (
                   <Typography color="error">{errors.cities}</Typography>
                 )}
               </FormControl>
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Or type city names manually (comma-separated)"
+                placeholder="e.g., Ahmedabad, Surat, Vadodara"
+                helperText="Enter multiple cities separated by commas"
+                disabled={!selectedState}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const input = (e.target as HTMLInputElement).value.trim();
+                    if (input) {
+                      const newCities = input.split(',').map(city => city.trim()).filter(city => city);
+                      const uniqueCities = [...new Set([...coreGroupForm.cities, ...newCities])];
+                      setCoreGroupForm({
+                        ...coreGroupForm,
+                        cities: uniqueCities,
+                      });
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }
+                }}
+              />
               <FormControl
                 fullWidth
                 margin="normal"
@@ -772,12 +1308,28 @@ const CommunityPage: React.FC = () => {
                 <MuiSelect
                   multiple
                   value={coreGroupForm.coreMemberIds}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const newCoreMemberIds = e.target.value as string[];
+                    // Remove any CGCs that are no longer in the selected core members
+                    const updatedCgcIds = coreGroupForm.cgcIds.filter(cgcId =>
+                      newCoreMemberIds.includes(cgcId)
+                    );
+                    // Also update CGC position assignments to remove members no longer selected
+                    const updatedCGCAssignments = coreGroupCGCAssignments
+                      .map(assignment => {
+                        if (!newCoreMemberIds.includes(assignment.memberId)) {
+                          return { memberId: "", position: "" };
+                        }
+                        return assignment;
+                      });
+
+                    setCoreGroupCGCAssignments(updatedCGCAssignments.length > 0 ? updatedCGCAssignments : [{ memberId: "", position: "" }]);
                     setCoreGroupForm({
                       ...coreGroupForm,
-                      coreMemberIds: e.target.value as string[],
-                    })
-                  }
+                      coreMemberIds: newCoreMemberIds,
+                      cgcIds: updatedCgcIds,
+                    });
+                  }}
                   label="Core Members"
                   renderValue={(selected) =>
                     coreMembers
@@ -807,6 +1359,122 @@ const CommunityPage: React.FC = () => {
                   <Typography color="error">{errors.coreMemberIds}</Typography>
                 )}
               </FormControl>
+
+              {/* ✅ CGC Position Assignments - Inline Form */}
+              <Box sx={{ mt: 3, mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600, color: "primary.main" }}>
+                  CGC Leadership Positions
+                </Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: "block" }}>
+                  Assign leadership positions (President, Networking Director, Membership Director)
+                </Typography>
+
+                {coreGroupCGCAssignments.map((assignment, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: "flex",
+                      gap: 2,
+                      mb: 2,
+                      p: 2,
+                      bgcolor: "grey.50",
+                      borderRadius: 1,
+                      border: "1px solid",
+                      borderColor: "grey.200",
+                      position: "relative",
+                    }}
+                  >
+                    <FormControl sx={{ flex: 1 }} size="small">
+                      <InputLabel>Core Member</InputLabel>
+                      <MuiSelect
+                        value={assignment.memberId}
+                        onChange={(e) => {
+                          const newAssignments = [...coreGroupCGCAssignments];
+                          newAssignments[index].memberId = e.target.value as string;
+                          setCoreGroupCGCAssignments(newAssignments);
+                        }}
+                        label="Core Member"
+                        disabled={coreGroupForm.coreMemberIds.length === 0}
+                      >
+                        <MenuItem value="">-- Select Member --</MenuItem>
+                        {coreMembers
+                          .filter((member) => coreGroupForm.coreMemberIds.includes(member._id))
+                          .filter((member) =>
+                            !coreGroupCGCAssignments.some((a, i) => i !== index && a.memberId === member._id)
+                          )
+                          .map((member) => (
+                            <MenuItem key={member._id} value={member._id}>
+                              {`${member.fname} ${member.lname}`}
+                            </MenuItem>
+                          ))}
+                      </MuiSelect>
+                    </FormControl>
+
+                    <FormControl sx={{ flex: 1 }} size="small">
+                      <InputLabel>Position</InputLabel>
+                      <MuiSelect
+                        value={assignment.position}
+                        onChange={(e) => {
+                          const newAssignments = [...coreGroupCGCAssignments];
+                          newAssignments[index].position = e.target.value as string;
+                          setCoreGroupCGCAssignments(newAssignments);
+                        }}
+                        label="Position"
+                        disabled={!assignment.memberId}
+                      >
+                        <MenuItem value="">
+                          {assignment.memberId ? "-- Select Position --" : "Select member first"}
+                        </MenuItem>
+                        {CGC_POSITIONS
+                          .filter((pos) =>
+                            !coreGroupCGCAssignments.some((a, i) => i !== index && a.position === pos.value)
+                          )
+                          .map((position) => (
+                            <MenuItem key={position.value} value={position.value}>
+                              {position.label}
+                            </MenuItem>
+                          ))}
+                      </MuiSelect>
+                    </FormControl>
+
+                    {coreGroupCGCAssignments.length > 1 && (
+                      <IconButton
+                        onClick={() => {
+                          const newAssignments = coreGroupCGCAssignments.filter((_, i) => i !== index);
+                          setCoreGroupCGCAssignments(newAssignments.length > 0 ? newAssignments : [{ memberId: "", position: "" }]);
+                        }}
+                        sx={{ position: "absolute", top: 4, right: 4 }}
+                        size="small"
+                        color="error"
+                      >
+                        <Delete />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+
+                {coreGroupCGCAssignments.length < 3 && (
+                  <Button
+                    onClick={() => {
+                      setCoreGroupCGCAssignments([...coreGroupCGCAssignments, { memberId: "", position: "" }]);
+                    }}
+                    variant="outlined"
+                    fullWidth
+                    size="small"
+                    sx={{ mt: 1, textTransform: "none" }}
+                    disabled={coreGroupForm.coreMemberIds.length === 0}
+                    startIcon={<Add />}
+                  >
+                    Add Another Leader
+                  </Button>
+                )}
+
+                {errors.cgcPositions && (
+                  <Typography color="error" variant="caption" sx={{ mt: 1, display: "block" }}>
+                    {errors.cgcPositions}
+                  </Typography>
+                )}
+              </Box>
             </Box>
           ) : dialog.mode === "deleteCoreGroup" ? (
             <Typography>
@@ -867,12 +1535,28 @@ const CommunityPage: React.FC = () => {
                 <MuiSelect
                   multiple
                   value={communityForm.coreMemberIds}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const newCoreMemberIds = e.target.value as string[];
+                    // Remove any CGCs that are no longer in the selected core members
+                    const updatedCgcIds = communityForm.cgcIds.filter(cgcId =>
+                      newCoreMemberIds.includes(cgcId)
+                    );
+                    // Also update CGC position assignments to remove members no longer selected
+                    const updatedCGCAssignments = communityCGCAssignments
+                      .map(assignment => {
+                        if (!newCoreMemberIds.includes(assignment.memberId)) {
+                          return { memberId: "", position: "" };
+                        }
+                        return assignment;
+                      });
+
+                    setCommunityCGCAssignments(updatedCGCAssignments.length > 0 ? updatedCGCAssignments : [{ memberId: "", position: "" }]);
                     setCommunityForm({
                       ...communityForm,
-                      coreMemberIds: e.target.value as string[],
-                    })
-                  }
+                      coreMemberIds: newCoreMemberIds,
+                      cgcIds: updatedCgcIds,
+                    });
+                  }}
                   label="Core Members"
                   disabled={!communityForm.coreGroupId}
                   renderValue={(selected) =>
@@ -903,6 +1587,122 @@ const CommunityPage: React.FC = () => {
                   <Typography color="error">{errors.coreMemberIds}</Typography>
                 )}
               </FormControl>
+
+              {/* ✅ CGC Position Assignments - Inline Form */}
+              <Box sx={{ mt: 3, mb: 2 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1, fontWeight: 600, color: "primary.main" }}>
+                  CGC Leadership Positions
+                </Typography>
+                <Typography variant="caption" color="textSecondary" sx={{ mb: 2, display: "block" }}>
+                  Assign leadership positions (President, Networking Director, Membership Director)
+                </Typography>
+
+                {communityCGCAssignments.map((assignment, index) => (
+                  <Box
+                    key={index}
+                    sx={{
+                      display: "flex",
+                      gap: 2,
+                      mb: 2,
+                      p: 2,
+                      bgcolor: "grey.50",
+                      borderRadius: 1,
+                      border: "1px solid",
+                      borderColor: "grey.200",
+                      position: "relative",
+                    }}
+                  >
+                    <FormControl sx={{ flex: 1 }} size="small">
+                      <InputLabel>Core Member</InputLabel>
+                      <MuiSelect
+                        value={assignment.memberId}
+                        onChange={(e) => {
+                          const newAssignments = [...communityCGCAssignments];
+                          newAssignments[index].memberId = e.target.value as string;
+                          setCommunityCGCAssignments(newAssignments);
+                        }}
+                        label="Core Member"
+                        disabled={!communityForm.coreGroupId || communityForm.coreMemberIds.length === 0}
+                      >
+                        <MenuItem value="">-- Select Member --</MenuItem>
+                        {filteredCoreMembers
+                          .filter((member) => communityForm.coreMemberIds.includes(member._id))
+                          .filter((member) =>
+                            !communityCGCAssignments.some((a, i) => i !== index && a.memberId === member._id)
+                          )
+                          .map((member) => (
+                            <MenuItem key={member._id} value={member._id}>
+                              {`${member.fname} ${member.lname}`}
+                            </MenuItem>
+                          ))}
+                      </MuiSelect>
+                    </FormControl>
+
+                    <FormControl sx={{ flex: 1 }} size="small">
+                      <InputLabel>Position</InputLabel>
+                      <MuiSelect
+                        value={assignment.position}
+                        onChange={(e) => {
+                          const newAssignments = [...communityCGCAssignments];
+                          newAssignments[index].position = e.target.value as string;
+                          setCommunityCGCAssignments(newAssignments);
+                        }}
+                        label="Position"
+                        disabled={!assignment.memberId}
+                      >
+                        <MenuItem value="">
+                          {assignment.memberId ? "-- Select Position --" : "Select member first"}
+                        </MenuItem>
+                        {CGC_POSITIONS
+                          .filter((pos) =>
+                            !communityCGCAssignments.some((a, i) => i !== index && a.position === pos.value)
+                          )
+                          .map((position) => (
+                            <MenuItem key={position.value} value={position.value}>
+                              {position.label}
+                            </MenuItem>
+                          ))}
+                      </MuiSelect>
+                    </FormControl>
+
+                    {communityCGCAssignments.length > 1 && (
+                      <IconButton
+                        onClick={() => {
+                          const newAssignments = communityCGCAssignments.filter((_, i) => i !== index);
+                          setCommunityCGCAssignments(newAssignments.length > 0 ? newAssignments : [{ memberId: "", position: "" }]);
+                        }}
+                        sx={{ position: "absolute", top: 4, right: 4 }}
+                        size="small"
+                        color="error"
+                      >
+                        <Delete />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+
+                {communityCGCAssignments.length < 3 && (
+                  <Button
+                    onClick={() => {
+                      setCommunityCGCAssignments([...communityCGCAssignments, { memberId: "", position: "" }]);
+                    }}
+                    variant="outlined"
+                    fullWidth
+                    size="small"
+                    sx={{ mt: 1, textTransform: "none" }}
+                    disabled={!communityForm.coreGroupId || communityForm.coreMemberIds.length === 0}
+                    startIcon={<Add />}
+                  >
+                    Add Another Leader
+                  </Button>
+                )}
+
+                {errors.cgcPositions && (
+                  <Typography color="error" variant="caption" sx={{ mt: 1, display: "block" }}>
+                    {errors.cgcPositions}
+                  </Typography>
+                )}
+              </Box>
               <FormControl fullWidth margin="normal" error={!!errors.countries}>
                 <InputLabel>Country</InputLabel>
                 <MuiSelect
@@ -950,7 +1750,7 @@ const CommunityPage: React.FC = () => {
                   }
                   disabled={
                     !selectedCommunityCountry ||
-                    !getLocationFieldVisibility(communityForm.countries).showStateField
+                    !getLocationFieldVisibility(communityForm.countries, selectedCommunityState).showStateField
                   }
                 >
                   {State.getStatesOfCountry(selectedCommunityCountry).map(
@@ -992,33 +1792,71 @@ const CommunityPage: React.FC = () => {
                   renderValue={(selected) => (selected as string[]).join(", ")}
                   disabled={
                     !selectedCommunityState ||
-                    !getLocationFieldVisibility(communityForm.countries).showCityField
+                    !getLocationFieldVisibility(communityForm.countries, selectedCommunityState).showCityField
                   }
                 >
-                  {City.getCitiesOfState(
-                    selectedCommunityCountry,
-                    selectedCommunityState
-                  )?.map((city) => (
-                    <MenuItem key={city.name} value={city.name}>
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          width: "100%",
-                        }}
-                      >
-                        {city.name}
-                        {communityForm.cities.includes(city.name) && (
-                          <Check sx={{ color: "blue", ml: "auto" }} />
-                        )}
-                      </Box>
-                    </MenuItem>
-                  ))}
+                  {(() => {
+                    const cities = City.getCitiesOfState(
+                      selectedCommunityCountry,
+                      selectedCommunityState
+                    );
+                    console.log("Cities for", selectedCommunityCountry, selectedCommunityState, ":", cities);
+
+                    if (!cities || cities.length === 0) {
+                      return (
+                        <MenuItem disabled>
+                          <Typography color="textSecondary" variant="body2">
+                            No cities available in library. Use manual input below.
+                          </Typography>
+                        </MenuItem>
+                      );
+                    }
+
+                    return cities.map((city) => (
+                      <MenuItem key={city.name} value={city.name}>
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            width: "100%",
+                          }}
+                        >
+                          {city.name}
+                          {communityForm.cities.includes(city.name) && (
+                            <Check sx={{ color: "blue", ml: "auto" }} />
+                          )}
+                        </Box>
+                      </MenuItem>
+                    ));
+                  })()}
                 </MuiSelect>
                 {errors.cities && (
                   <Typography color="error">{errors.cities}</Typography>
                 )}
               </FormControl>
+              <TextField
+                fullWidth
+                margin="normal"
+                label="Or type city names manually (comma-separated)"
+                placeholder="e.g., Ahmedabad, Surat, Vadodara"
+                helperText="Enter multiple cities separated by commas"
+                disabled={!selectedCommunityState}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const input = (e.target as HTMLInputElement).value.trim();
+                    if (input) {
+                      const newCities = input.split(',').map(city => city.trim()).filter(city => city);
+                      const uniqueCities = [...new Set([...communityForm.cities, ...newCities])];
+                      setCommunityForm({
+                        ...communityForm,
+                        cities: uniqueCities,
+                      });
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }
+                }}
+              />
               <FormControl
                 fullWidth
                 margin="normal"
